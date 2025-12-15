@@ -122,7 +122,9 @@
 
   <script type="module">
     const { invoke } = window.__TAURI__.core;
-    const { getCurrentWindow } = window.__TAURI__.window;
+    const { getCurrentWindow, Window } = window.__TAURI__.window;
+
+    console.log('[DEBUG][selector] 脚本开始执行');
 
     const selection = document.getElementById('selection');
     const sizeEl = document.getElementById('size');
@@ -137,6 +139,23 @@
     let startX, startY, isSelecting = false;
     let selectionRect = null;
     let mode = 'image'; // 'image', 'gif', 'video'
+
+    // Debug: track window lifecycle
+    window.addEventListener('beforeunload', () => {
+      console.log('[DEBUG][selector] beforeunload 事件触发');
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      console.log('[DEBUG][selector] visibilitychange:', document.visibilityState);
+    });
+
+    window.addEventListener('blur', () => {
+      console.log('[DEBUG][selector] window blur');
+    });
+
+    window.addEventListener('focus', () => {
+      console.log('[DEBUG][selector] window focus');
+    });
 
     function updateModeUI() {
       btnImage.classList.toggle('active', mode === 'image');
@@ -272,7 +291,9 @@
 
     // Keyboard shortcuts
     document.addEventListener('keydown', async (e) => {
+      console.log('[DEBUG][selector] keydown:', e.key, 'code:', e.code, 'shift:', e.shiftKey, 'alt:', e.altKey);
       if (e.key === 'Escape') {
+        console.log('[DEBUG][selector] ESC 按下，关闭窗口');
         await getCurrentWindow().close();
       } else if (e.key === 's' || e.key === 'S') {
         mode = 'image';
@@ -287,6 +308,8 @@
         if (selectionRect) await doCapture();
       }
     });
+
+    console.log('[DEBUG][selector] 脚本执行完毕，等待用户操作');
   </script>
 </body>
 </html>

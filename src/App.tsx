@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import "./App.css";
 
 type CaptureFormat = "image" | "gif" | "video";
@@ -23,24 +22,10 @@ function App() {
       setFrameCount(event.payload.frame_count);
     });
 
-    register("CommandOrControl+Shift+G", async () => {
-      if (!isRecording) {
-        await invoke("open_selector");
-        setSavedPath("");
-      }
-    }).catch(console.error);
-
     return () => {
       unlisten.then((fn) => fn());
-      unregister("CommandOrControl+Shift+G").catch(console.error);
     };
-  }, [isRecording]);
-
-  const handleCapture = async () => {
-    setSavedPath("");
-    // TODO: pass format to selector
-    await invoke("open_selector");
-  };
+  }, []);
 
   const handleStopRecording = async () => {
     await invoke("stop_recording");
@@ -86,11 +71,7 @@ function App() {
       </div>
 
       <div className="controls">
-        {!isRecording ? (
-          <button className="btn-primary" onClick={handleCapture}>
-            Capture
-          </button>
-        ) : (
+        {isRecording && (
           <button className="btn-stop" onClick={handleStopRecording}>
             <span className="recording-dot" />
             Stop ({frameCount})
@@ -99,7 +80,7 @@ function App() {
       </div>
 
       <p className="shortcut-hint">
-        <kbd>⌘</kbd> + <kbd>⇧</kbd> + <kbd>G</kbd>
+        <kbd>⇧</kbd> + <kbd>⌥</kbd> + <kbd>A</kbd>
       </p>
 
       {savedPath && <div className="saved-toast">Saved!</div>}

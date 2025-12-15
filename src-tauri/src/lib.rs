@@ -10,6 +10,7 @@ use image::RgbaImage;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WebviewUrl};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -98,6 +99,23 @@ fn capture_screenshot() -> Result<String, String> {
 
 #[tauri::command]
 fn open_selector(app: AppHandle, state: tauri::State<SharedState>) -> Result<(), String> {
+    println!("[DEBUG][open_selector] 入口");
+
+    // If selector already exists, don't recreate (prevents rapid re-trigger)
+    if let Some(win) = app.get_webview_window("selector") {
+        println!("[DEBUG][open_selector] selector 窗口已存在，跳过");
+        // Just ensure it's visible and focused
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    // Hide main window
+    if let Some(main_win) = app.get_webview_window("main") {
+        println!("[DEBUG][open_selector] 隐藏主窗口");
+        let _ = main_win.hide();
+    }
+
     // Use screenshots crate for full screen size (including dock/menu bar)
     let screens = Screen::all().map_err(|e| e.to_string())?;
     if screens.is_empty() {
@@ -119,10 +137,7 @@ fn open_selector(app: AppHandle, state: tauri::State<SharedState>) -> Result<(),
         s.screen_scale = scale;
     }
 
-    // Close existing selector if any
-    if let Some(win) = app.get_webview_window("selector") {
-        let _ = win.close();
-    }
+    println!("[DEBUG][open_selector] 准备创建 selector 窗口");
 
     let win = WebviewWindowBuilder::new(&app, "selector", WebviewUrl::App("/selector.html".into()))
         .title("Select Region")
@@ -369,9 +384,24 @@ fn set_fps(state: tauri::State<SharedState>, fps: u32) {
 pub fn run() {
     let state: SharedState = Arc::new(Mutex::new(AppState::default()));
 
+    let state_for_shortcut = state.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, _shortcut, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        println!("[DEBUG][shortcut] Shift+Alt+A pressed");
+                        // Check if not recording before opening selector
+                        let is_recording = state_for_shortcut.lock().unwrap().recording;
+                        if !is_recording {
+                            let _ = open_selector_internal(app.clone());
+                        }
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(state)
@@ -386,6 +416,84 @@ pub fn run() {
             save_gif,
             set_fps,
         ])
+        .setup(|app| {
+            // Register global shortcut
+            let shortcut = Shortcut::new(Some(Modifiers::SHIFT | Modifiers::ALT), Code::KeyA);
+            app.global_shortcut().register(shortcut)?;
+            println!("[DEBUG] Global shortcut Shift+Alt+A registered");
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// Internal function to open selector (called from shortcut handler)
+fn open_selector_internal(app: AppHandle) -> Result<(), String> {
+    println!("[DEBUG][open_selector_internal] 入口");
+
+    // If selector already exists, don't recreate
+    if let Some(win) = app.get_webview_window("selector") {
+        println!("[DEBUG][open_selector_internal] selector 窗口已存在，跳过");
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    // Hide main window
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.hide();
+    }
+
+    let screens = Screen::all().map_err(|e| e.to_string())?;
+    if screens.is_empty() {
+        return Err("No screens found".to_string());
+    }
+
+    let screen = &screens[0];
+    let screen_x = screen.display_info.x;
+    let screen_y = screen.display_info.y;
+    let width = screen.display_info.width;
+    let height = screen.display_info.height;
+    let scale = screen.display_info.scale_factor;
+
+    // Store screen info
+    {
+        let state = app.state::<SharedState>();
+        let mut s = state.lock().unwrap();
+        s.screen_x = screen_x;
+        s.screen_y = screen_y;
+        s.screen_scale = scale;
+    }
+
+    let win = WebviewWindowBuilder::new(&app, "selector", WebviewUrl::App("/selector.html".into()))
+        .title("Select Region")
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .transparent(true)
+        .shadow(false)
+        .accept_first_mouse(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let physical_width = (width as f32 * scale) as u32;
+    let physical_height = (height as f32 * scale) as u32;
+    let physical_x = (screen_x as f32 * scale) as i32;
+    let physical_y = (screen_y as f32 * scale) as i32;
+
+    win.set_size(PhysicalSize::new(physical_width, physical_height)).map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(physical_x, physical_y)).map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{msg_send, sel, sel_impl};
+        let _ = win.with_webview(|webview| {
+            unsafe {
+                let ns_window = webview.ns_window() as *mut objc::runtime::Object;
+                let _: () = msg_send![ns_window, setLevel: 1000_i64];
+            }
+        });
+    }
+
+    Ok(())
 }
