@@ -10,6 +10,7 @@ use image::RgbaImage;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WebviewUrl};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Region {
@@ -244,7 +245,7 @@ fn stop_recording(state: tauri::State<SharedState>) {
 }
 
 #[tauri::command]
-fn save_screenshot(state: tauri::State<SharedState>) -> Result<String, String> {
+fn save_screenshot(app: AppHandle, state: tauri::State<SharedState>) -> Result<String, String> {
     println!("[DEBUG][save_screenshot] 入口");
     let s = state.lock().unwrap();
     let region = s.region.clone().ok_or("No region selected")?;
@@ -270,6 +271,19 @@ fn save_screenshot(state: tauri::State<SharedState>) -> Result<String, String> {
         })?;
     println!("[DEBUG][save_screenshot] capture_area 成功, 图像尺寸: {}x{}", img.width(), img.height());
 
+    // 复制到剪切板 (使用 RGBA raw bytes)
+    let tauri_image = tauri::image::Image::new_owned(
+        img.as_raw().to_vec(),
+        img.width(),
+        img.height(),
+    );
+    app.clipboard().write_image(&tauri_image).map_err(|e| {
+        println!("[DEBUG][save_screenshot] 复制到剪切板错误: {}", e);
+        e.to_string()
+    })?;
+    println!("[DEBUG][save_screenshot] 已复制到剪切板");
+
+    // 保存文件
     let output_dir = dirs::picture_dir()
         .or_else(|| dirs::home_dir())
         .unwrap_or_else(|| PathBuf::from("."))
@@ -287,9 +301,6 @@ fn save_screenshot(state: tauri::State<SharedState>) -> Result<String, String> {
         e.to_string()
     })?;
     println!("[DEBUG][save_screenshot] 文件保存成功");
-
-    // TODO: 这里应该复制到剪切板，但目前只保存了文件
-    println!("[DEBUG][save_screenshot] 注意：目前没有复制到剪切板的逻辑！");
 
     Ok(filename.to_string_lossy().to_string())
 }
@@ -362,6 +373,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             get_screens,
