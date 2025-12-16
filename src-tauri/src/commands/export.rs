@@ -251,7 +251,7 @@ pub fn export_gif(app: AppHandle, state: tauri::State<SharedState>, config: Expo
     let recording_fps = s.recording_fps;
     println!("[DEBUG][export_gif] 原始帧数: {}, 录制帧率: {}", total_frames, recording_fps);
 
-    let all_frames = std::mem::take(&mut s.frames);
+    let all_frames = s.frames.clone();
     drop(s);
 
     let config = config.clone();
