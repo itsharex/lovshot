@@ -12,6 +12,14 @@ interface SelectionRect {
   h: number;
 }
 
+interface WindowInfo {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  titlebar_height: number;
+}
+
 export default function Selector() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
@@ -21,6 +29,9 @@ export default function Selector() {
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredWindow, setHoveredWindow] = useState<SelectionRect | null>(null);
   const [resizeDir, setResizeDir] = useState<ResizeDirection>(null);
+  const [excludeTitlebar, setExcludeTitlebar] = useState(false);
+  const [currentTitlebarHeight, setCurrentTitlebarHeight] = useState(0);
+  const [originalWindowInfo, setOriginalWindowInfo] = useState<WindowInfo | null>(null);
 
   const startPos = useRef({ x: 0, y: 0 });
   const startRect = useRef<SelectionRect | null>(null);
@@ -241,31 +252,38 @@ export default function Selector() {
         setSelectionRect({ x, y, w, h });
         setShowToolbar(true);
         setHoveredWindow(null); // 用户拖拽了自定义区域，清除窗口预览
+        setOriginalWindowInfo(null); // Clear window info since user dragged custom area
         if (sizeRef.current) sizeRef.current.style.display = "none";
       } else {
         if (selectionRef.current) selectionRef.current.style.display = "none";
         if (sizeRef.current) sizeRef.current.style.display = "none";
 
-        const windowRegion = await invoke<{ x: number; y: number; width: number; height: number } | null>(
-          "get_window_at_cursor"
-        );
+        // Use get_window_info_at_cursor to get titlebar height
+        const windowInfo = await invoke<WindowInfo | null>("get_window_info_at_cursor");
 
-        if (windowRegion) {
+        if (windowInfo) {
+          setCurrentTitlebarHeight(windowInfo.titlebar_height);
+          setOriginalWindowInfo(windowInfo); // Store for later toggle
+
+          // Apply excludeTitlebar if enabled
+          const finalY = excludeTitlebar ? windowInfo.y + windowInfo.titlebar_height : windowInfo.y;
+          const finalH = excludeTitlebar ? windowInfo.height - windowInfo.titlebar_height : windowInfo.height;
+
           setSelectionRect({
-            x: windowRegion.x,
-            y: windowRegion.y,
-            w: windowRegion.width,
-            h: windowRegion.height,
+            x: windowInfo.x,
+            y: finalY,
+            w: windowInfo.width,
+            h: finalH,
           });
           setShowToolbar(true);
           setShowHint(false);
-          setHoveredWindow(null); // 确认窗口选区后清除预览
+          setHoveredWindow(null);
 
           if (selectionRef.current) {
-            selectionRef.current.style.left = `${windowRegion.x}px`;
-            selectionRef.current.style.top = `${windowRegion.y}px`;
-            selectionRef.current.style.width = `${windowRegion.width}px`;
-            selectionRef.current.style.height = `${windowRegion.height}px`;
+            selectionRef.current.style.left = `${windowInfo.x}px`;
+            selectionRef.current.style.top = `${finalY}px`;
+            selectionRef.current.style.width = `${windowInfo.width}px`;
+            selectionRef.current.style.height = `${finalH}px`;
             selectionRef.current.style.display = "block";
           }
         } else {
@@ -273,8 +291,34 @@ export default function Selector() {
         }
       }
     },
-    [isSelecting, resizeDir]
+    [isSelecting, resizeDir, excludeTitlebar]
   );
+
+  // Re-calculate selection when excludeTitlebar changes (only for window selections)
+  useEffect(() => {
+    if (!originalWindowInfo || !showToolbar) return;
+
+    const finalY = excludeTitlebar
+      ? originalWindowInfo.y + originalWindowInfo.titlebar_height
+      : originalWindowInfo.y;
+    const finalH = excludeTitlebar
+      ? originalWindowInfo.height - originalWindowInfo.titlebar_height
+      : originalWindowInfo.height;
+
+    setSelectionRect({
+      x: originalWindowInfo.x,
+      y: finalY,
+      w: originalWindowInfo.width,
+      h: finalH,
+    });
+
+    if (selectionRef.current) {
+      selectionRef.current.style.left = `${originalWindowInfo.x}px`;
+      selectionRef.current.style.top = `${finalY}px`;
+      selectionRef.current.style.width = `${originalWindowInfo.width}px`;
+      selectionRef.current.style.height = `${finalH}px`;
+    }
+  }, [excludeTitlebar, originalWindowInfo, showToolbar]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -287,6 +331,8 @@ export default function Selector() {
         setMode("gif");
       } else if (e.key === "l" || e.key === "L") {
         setMode("scroll");
+      } else if (e.key === "t" || e.key === "T") {
+        setExcludeTitlebar((prev) => !prev);
       } else if (e.key === "Enter" && selectionRect) {
         await doCapture();
       }
@@ -417,6 +463,14 @@ export default function Selector() {
             title="Record Video (V)"
           >
             V
+          </button>
+          <div className="toolbar-divider" />
+          <button
+            className={`toolbar-btn ${excludeTitlebar ? "active" : ""}`}
+            onClick={() => setExcludeTitlebar(!excludeTitlebar)}
+            title={`Exclude Titlebar (T) - ${currentTitlebarHeight}px`}
+          >
+            T
           </button>
           <div className="toolbar-divider" />
           <button

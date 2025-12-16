@@ -124,6 +124,20 @@ pub fn get_window_at_cursor() -> Option<Region> {
     None
 }
 
+/// Get window info at cursor including titlebar height (for exclude-titlebar feature)
+#[tauri::command]
+pub fn get_window_info_at_cursor() -> Option<window_detect::WindowInfo> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Mouse::Position { x, y } = Mouse::get_mouse_position() {
+            return window_detect::get_window_info_at_position(x as f64, y as f64);
+        }
+        None
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
 #[tauri::command]
 pub fn clear_pending_mode(state: tauri::State<SharedState>) {
     state.lock().unwrap().pending_mode = None;

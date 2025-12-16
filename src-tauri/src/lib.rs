@@ -81,6 +81,7 @@ pub fn run() {
             commands::get_screen_snapshot,
             commands::clear_pending_mode,
             commands::get_window_at_cursor,
+            commands::get_window_info_at_cursor,
             commands::get_shortcuts_config,
             commands::save_shortcut,
             commands::reset_shortcuts_to_default,

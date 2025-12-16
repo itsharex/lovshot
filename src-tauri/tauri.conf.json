@@ -4,7 +4,7 @@
   "identifier": "app.lovpen.shot",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:51215",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
