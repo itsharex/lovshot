@@ -62,21 +62,27 @@ impl Screen {
     }
 
     /// Capture a specific area of the screen
+    /// Note: x, y, width, height are in logical pixels (CSS pixels)
+    /// xcap returns physical pixels, so we scale by scale_factor
     pub fn capture_area(&self, x: i32, y: i32, width: u32, height: u32) -> Result<RgbaImage, String> {
-        // xcap's capture_image returns the full monitor, we need to crop
+        // xcap's capture_image returns the full monitor in physical pixels
         let full = self.monitor.capture_image().map_err(|e| e.to_string())?;
 
-        // Adjust coordinates relative to monitor position
-        let rel_x = (x - self.display_info.x).max(0) as u32;
-        let rel_y = (y - self.display_info.y).max(0) as u32;
+        let scale = self.display_info.scale_factor;
+
+        // Convert logical pixels to physical pixels
+        let rel_x = ((x - self.display_info.x) as f32 * scale).max(0.0) as u32;
+        let rel_y = ((y - self.display_info.y) as f32 * scale).max(0.0) as u32;
+        let phys_w = (width as f32 * scale) as u32;
+        let phys_h = (height as f32 * scale) as u32;
 
         // Clamp to valid bounds
         let max_x = full.width().saturating_sub(1);
         let max_y = full.height().saturating_sub(1);
         let crop_x = rel_x.min(max_x);
         let crop_y = rel_y.min(max_y);
-        let crop_w = width.min(full.width().saturating_sub(crop_x));
-        let crop_h = height.min(full.height().saturating_sub(crop_y));
+        let crop_w = phys_w.min(full.width().saturating_sub(crop_x));
+        let crop_h = phys_h.min(full.height().saturating_sub(crop_y));
 
         if crop_w == 0 || crop_h == 0 {
             return Err("Invalid capture area".to_string());
