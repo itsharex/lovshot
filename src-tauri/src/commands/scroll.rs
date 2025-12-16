@@ -4,10 +4,11 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use image::codecs::jpeg::JpegEncoder;
 use image::ExtendedColorType;
 use image::{DynamicImage, GenericImage, RgbaImage};
-use screenshots::Screen;
+use crate::capture::Screen;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
+use crate::fft_match::detect_scroll_delta_fft;
 use crate::state::SharedState;
 use crate::tray::create_recording_overlay;
 use crate::types::{CropEdges, Region, ScrollCaptureProgress};
@@ -123,8 +124,8 @@ pub fn capture_scroll_frame_auto(
     // Get last frame for comparison
     let last_frame = s.scroll_frames.last().ok_or("No previous frame")?;
 
-    // Detect scroll direction and amount by comparing frames
-    let scroll_delta = detect_scroll_delta(last_frame, &new_frame);
+    // Detect scroll direction and amount using FFT-based matching
+    let scroll_delta = detect_scroll_delta_fft(last_frame, &new_frame);
 
     // If no significant scroll detected, don't refresh preview (keeps UI stable)
     if scroll_delta.abs() < 10 {
@@ -157,165 +158,6 @@ pub fn capture_scroll_frame_auto(
         total_height,
         preview_base64: preview,
     }))
-}
-
-/// Detect scroll amount by comparing two frames
-/// Returns positive for scroll down, negative for scroll up
-fn detect_scroll_delta(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
-    let (w, h) = prev.dimensions();
-    let (w2, h2) = curr.dimensions();
-
-    if w != w2 || h != h2 {
-        return 0;
-    }
-
-    let h_i32 = h as i32;
-    let search_range = (h_i32 / 2).min(200).max(0); // Search up to half height or 200px
-    let strip_height: u32 = 20;
-    let strip_height_i32 = strip_height as i32;
-    let min_delta: i32 = 10;
-
-    // If the region is too small, bail out.
-    if h_i32 <= strip_height_i32 || search_range < min_delta {
-        return 0;
-    }
-
-    // Score a candidate offset using multiple strips across the overlapping area.
-    // direction_down=true: curr_y matches prev_y+offset (scroll down)
-    // direction_down=false: curr_y+offset matches prev_y (scroll up)
-    fn score_offset(prev: &RgbaImage, curr: &RgbaImage, offset: i32, direction_down: bool) -> i64 {
-        let (w, h) = prev.dimensions();
-        let strip_height: u32 = 20;
-        let h_i32 = h as i32;
-        let strip_height_i32 = strip_height as i32;
-
-        let available = h_i32 - offset - strip_height_i32;
-        if available < 0 {
-            return i64::MAX;
-        }
-
-        // Sample 3 strips: top, mid, and lower-mid within the overlapping area.
-        let y0 = 0i32;
-        let y1 = available / 2;
-        let y2 = (available * 3) / 4;
-        let ys = [y0, y1, y2];
-
-        let mut total = 0i64;
-        for y in ys {
-            let (prev_y, curr_y) = if direction_down {
-                (y + offset, y)
-            } else {
-                (y, y + offset)
-            };
-
-            if prev_y < 0 || curr_y < 0 {
-                return i64::MAX;
-            }
-
-            let score = compare_strips(prev, curr, prev_y as u32, curr_y as u32, w, strip_height);
-            if score == i64::MAX {
-                return i64::MAX;
-            }
-            total = total.saturating_add(score);
-        }
-
-        total
-    }
-
-    // First gate: if frames are already very similar without any shift, treat as no scroll.
-    let score_no_shift = score_offset(prev, curr, 0, true);
-    if score_no_shift == i64::MAX {
-        return 0;
-    }
-
-    let width_samples = ((w + 3) / 4) as i64; // compare_strips samples every 4th pixel
-    let samples_total = width_samples * (strip_height as i64) * 3;
-    let still_threshold = samples_total * 25; // avg diff per sampled pixel (RGB sum) < ~25
-    if score_no_shift <= still_threshold {
-        return 0;
-    }
-
-    // Find best down/up offsets.
-    let mut best_match_down = 0;
-    let mut best_score_down = i64::MAX;
-    let mut best_match_up = 0;
-    let mut best_score_up = i64::MAX;
-
-    for offset in (min_delta..=search_range).step_by(5) {
-        let score_down = score_offset(prev, curr, offset, true);
-        if score_down < best_score_down {
-            best_score_down = score_down;
-            best_match_down = offset;
-        }
-
-        let score_up = score_offset(prev, curr, offset, false);
-        if score_up < best_score_up {
-            best_score_up = score_up;
-            best_match_up = offset;
-        }
-    }
-
-    // Require high confidence: shifted alignment must be meaningfully better than no shift,
-    // and direction must be unambiguous. This avoids false stitching from small animated changes.
-    let (best_delta, best_score, other_score) = if best_score_down <= best_score_up {
-        (best_match_down, best_score_down, best_score_up)
-    } else {
-        (-best_match_up, best_score_up, best_score_down)
-    };
-
-    if best_delta.abs() < min_delta {
-        return 0;
-    }
-
-    // Absolute match quality gate (avg diff per sampled pixel should be reasonably low).
-    let match_threshold = samples_total * 70;
-    if best_score == i64::MAX || best_score > match_threshold {
-        return 0;
-    }
-
-    // Relative improvement gate (best shifted match must be at least 30% better than no shift).
-    if best_score.saturating_mul(100) >= score_no_shift.saturating_mul(70) {
-        return 0;
-    }
-
-    // Direction confidence gate (avoid ambiguous matches on uniform content).
-    if other_score != i64::MAX && best_score.saturating_mul(100) >= other_score.saturating_mul(90) {
-        return 0;
-    }
-
-    best_delta
-}
-
-/// Compare horizontal strips from two images
-/// Returns sum of absolute differences (lower = more similar)
-fn compare_strips(
-    prev: &RgbaImage,
-    curr: &RgbaImage,
-    prev_y: u32,
-    curr_y: u32,
-    width: u32,
-    height: u32,
-) -> i64 {
-    let mut diff: i64 = 0;
-    let (_, prev_h) = prev.dimensions();
-    let (_, curr_h) = curr.dimensions();
-
-    if prev_y + height > prev_h || curr_y + height > curr_h {
-        return i64::MAX;
-    }
-
-    // Sample every 4th pixel for speed
-    for y in 0..height {
-        for x in (0..width).step_by(4) {
-            let p1 = prev.get_pixel(x, prev_y + y);
-            let p2 = curr.get_pixel(x, curr_y + y);
-
-            diff += (p1[0] as i64 - p2[0] as i64).abs();
-            diff += (p1[1] as i64 - p2[1] as i64).abs();
-            diff += (p1[2] as i64 - p2[2] as i64).abs();
-        }
-    }
-    diff
 }
 
 /// Get current scroll preview without capturing new frame

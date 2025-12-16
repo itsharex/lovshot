@@ -2,7 +2,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use image::RgbaImage;
-use screenshots::Screen;
+use crate::capture::Screen;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::state::SharedState;

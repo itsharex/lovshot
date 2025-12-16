@@ -1,4 +1,4 @@
-use screenshots::Screen;
+use crate::capture::Screen;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WebviewUrl};
 use mouse_position::mouse_position::Mouse;
 

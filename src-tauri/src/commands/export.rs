@@ -5,7 +5,7 @@ use std::thread;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use gif::{Encoder, Frame, Repeat};
 use image::RgbaImage;
-use screenshots::Screen;
+use crate::capture::Screen;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 

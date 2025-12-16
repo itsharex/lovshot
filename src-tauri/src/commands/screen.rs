@@ -1,5 +1,5 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use screenshots::Screen;
+use crate::capture::Screen;
 
 #[tauri::command]
 pub fn get_screens() -> Vec<serde_json::Value> {

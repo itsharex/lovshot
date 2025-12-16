@@ -1,4 +1,4 @@
-use screenshots::Screen;
+use crate::capture::Screen;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WebviewUrl};
 use tauri::image::Image as TauriImage;
 

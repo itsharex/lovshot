@@ -8,7 +8,9 @@ use tauri_plugin_global_shortcut::ShortcutState;
 #[cfg(target_os = "macos")]
 mod window_detect;
 
+mod capture;
 mod config;
+mod fft_match;
 mod types;
 mod state;
 mod shortcuts;
