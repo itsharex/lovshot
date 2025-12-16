@@ -39,7 +39,6 @@ body,
 .window-highlight {
   position: fixed;
   border: 3px solid var(--primary);
-  background: rgba(204, 120, 92, 0.08);
   pointer-events: none;
   z-index: 4;
   border-radius: 4px;

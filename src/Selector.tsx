@@ -94,18 +94,17 @@ export default function Selector() {
     await invoke("set_region", { region });
 
     if (mode === "image") {
-      // Hide selection UI before screenshot
-      setShowToolbar(false);
-      setSelectionRect(null);
-      if (selectionRef.current) selectionRef.current.style.display = "none";
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Hide entire window before screenshot to avoid capturing UI
+      const win = getCurrentWindow();
+      await win.hide();
+      // Wait for window to fully hide
+      await new Promise((r) => setTimeout(r, 50));
       await invoke("save_screenshot");
+      await win.close();
     } else if (mode === "gif") {
-      // GIF mode: just start recording, config is set in editor later
       await invoke("start_recording");
+      await closeWindow();
     }
-
-    await closeWindow();
   }, [selectionRect, mode, closeWindow]);
 
   // Mouse events

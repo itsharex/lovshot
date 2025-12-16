@@ -112,6 +112,8 @@ struct AppState {
     screen_scale: f32,
     // Pending capture mode (set by hotkey before opening selector)
     pending_mode: Option<CaptureMode>,
+    // Screen snapshot for selector background (prevents Dock hover through)
+    screen_snapshot: Option<String>,
 }
 
 impl Default for AppState {
@@ -125,6 +127,7 @@ impl Default for AppState {
             screen_y: 0,
             screen_scale: 1.0,
             pending_mode: None,
+            screen_snapshot: None,
         }
     }
 }
@@ -226,7 +229,7 @@ fn open_selector(app: AppHandle, state: tauri::State<SharedState>) -> Result<(),
     let height = screen.display_info.height;
     let scale = screen.display_info.scale_factor;
 
-    // Store screen info for capture
+    // Store screen info
     {
         let mut s = state.lock().unwrap();
         s.screen_x = screen_x;
@@ -286,6 +289,11 @@ fn set_region(state: tauri::State<SharedState>, region: Region) {
 #[tauri::command]
 fn get_pending_mode(state: tauri::State<SharedState>) -> Option<CaptureMode> {
     state.lock().unwrap().pending_mode
+}
+
+#[tauri::command]
+fn get_screen_snapshot(state: tauri::State<SharedState>) -> Option<String> {
+    state.lock().unwrap().screen_snapshot.clone()
 }
 
 #[tauri::command]
@@ -1165,6 +1173,7 @@ pub fn run() {
             open_selector,
             set_region,
             get_pending_mode,
+            get_screen_snapshot,
             clear_pending_mode,
             get_window_at_cursor,
             get_shortcuts_config,
