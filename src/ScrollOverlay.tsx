@@ -97,7 +97,8 @@ export default function ScrollOverlay() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const handleStop = () => {
+  const handleStop = async () => {
+    await invoke("stop_scroll_capture");
     setIsStopped(true);
   };
 

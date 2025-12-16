@@ -292,6 +292,14 @@ pub fn finish_scroll_capture(state: tauri::State<SharedState>, path: String, cro
     Ok(path)
 }
 
+/// Stop scroll capture (keep data for preview)
+#[tauri::command]
+pub fn stop_scroll_capture(state: tauri::State<SharedState>) {
+    println!("[DEBUG][shortcut] 停止滚动截图");
+    let mut s = state.lock().unwrap();
+    s.scroll_capturing = false;
+}
+
 /// Cancel scroll capture
 #[tauri::command]
 pub fn cancel_scroll_capture(state: tauri::State<SharedState>) {
