@@ -35,4 +35,6 @@ mouse_position = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
+core-graphics = "0.24"
+core-foundation = "0.10"
 

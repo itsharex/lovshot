@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type Mode = "image" | "gif" | "video";
-type OutputScale = 1 | 0.75 | 0.5 | 0.25;
 
 interface SelectionRect {
   x: number;
@@ -18,7 +17,6 @@ export default function Selector() {
   const [mode, setMode] = useState<Mode>("image");
   const [showHint, setShowHint] = useState(true);
   const [showToolbar, setShowToolbar] = useState(false);
-  const [outputScale, setOutputScale] = useState<OutputScale>(1);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
   const startPos = useRef({ x: 0, y: 0 });
@@ -66,19 +64,19 @@ export default function Selector() {
     await invoke("set_region", { region });
 
     if (mode === "image") {
-      // Hide selection before screenshot
+      // Hide selection UI before screenshot
       setShowToolbar(false);
       setSelectionRect(null);
+      if (selectionRef.current) selectionRef.current.style.display = "none";
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      // Pass scale to save_screenshot
-      await invoke("save_screenshot", { scale: outputScale });
+      await invoke("save_screenshot");
     } else if (mode === "gif") {
       // GIF mode: just start recording, config is set in editor later
       await invoke("start_recording");
     }
 
     await closeWindow();
-  }, [selectionRect, mode, outputScale, closeWindow]);
+  }, [selectionRect, mode, closeWindow]);
 
   // Mouse events
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -120,7 +118,7 @@ export default function Selector() {
   );
 
   const handleMouseUp = useCallback(
-    (e: React.MouseEvent) => {
+    async (e: React.MouseEvent) => {
       if (!isSelecting) return;
       setIsSelecting(false);
 
@@ -130,13 +128,40 @@ export default function Selector() {
       const h = Math.abs(e.clientY - startPos.current.y);
 
       if (w > 10 && h > 10) {
+        // Drag mode: use dragged region
         setSelectionRect({ x, y, w, h });
         setShowToolbar(true);
         if (sizeRef.current) sizeRef.current.style.display = "none";
       } else {
+        // Click mode: detect window under cursor
         if (selectionRef.current) selectionRef.current.style.display = "none";
         if (sizeRef.current) sizeRef.current.style.display = "none";
-        setShowHint(true);
+
+        const windowRegion = await invoke<{ x: number; y: number; width: number; height: number } | null>(
+          "get_window_at_cursor"
+        );
+
+        if (windowRegion) {
+          setSelectionRect({
+            x: windowRegion.x,
+            y: windowRegion.y,
+            w: windowRegion.width,
+            h: windowRegion.height,
+          });
+          setShowToolbar(true);
+          setShowHint(false);
+
+          // Update visual selection box
+          if (selectionRef.current) {
+            selectionRef.current.style.left = `${windowRegion.x}px`;
+            selectionRef.current.style.top = `${windowRegion.y}px`;
+            selectionRef.current.style.width = `${windowRegion.width}px`;
+            selectionRef.current.style.height = `${windowRegion.height}px`;
+            selectionRef.current.style.display = "block";
+          }
+        } else {
+          setShowHint(true);
+        }
       }
     },
     [isSelecting]
@@ -216,19 +241,6 @@ export default function Selector() {
             🎥
           </button>
           <div className="toolbar-divider" />
-          {mode === "image" && (
-            <select
-              className="toolbar-select"
-              value={outputScale}
-              onChange={(e) => setOutputScale(Number(e.target.value) as OutputScale)}
-              title="Output Scale"
-            >
-              <option value={1}>1x</option>
-              <option value={0.75}>75%</option>
-              <option value={0.5}>50%</option>
-              <option value={0.25}>25%</option>
-            </select>
-          )}
           <button
             className="toolbar-btn"
             onClick={(e) => {

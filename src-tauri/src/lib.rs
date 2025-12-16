@@ -17,6 +17,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use mouse_position::mouse_position::Mouse;
 
+#[cfg(target_os = "macos")]
+mod window_detect;
+
 mod config;
 use config::{AppConfig, ShortcutConfig};
 
@@ -283,6 +286,18 @@ fn set_region(state: tauri::State<SharedState>, region: Region) {
 #[tauri::command]
 fn get_pending_mode(state: tauri::State<SharedState>) -> Option<CaptureMode> {
     state.lock().unwrap().pending_mode
+}
+
+#[tauri::command]
+fn get_window_at_cursor() -> Option<Region> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Mouse::Position { x, y } = Mouse::get_mouse_position() {
+            // mouse_position returns global screen coordinates
+            return window_detect::get_window_at_position(x as f64, y as f64);
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -1151,6 +1166,7 @@ pub fn run() {
             set_region,
             get_pending_mode,
             clear_pending_mode,
+            get_window_at_cursor,
             get_shortcuts_config,
             save_shortcut,
             reset_shortcuts_to_default,
