@@ -34,8 +34,14 @@ pub fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error
         .and_then(|v| v.first())
         .map(|s| s.to_shortcut_string())
         .unwrap_or_else(|| "Alt+S".to_string());
+    let show_main_shortcut = cfg
+        .shortcuts
+        .get("show_main")
+        .and_then(|v| v.first())
+        .map(|s| s.to_shortcut_string())
+        .unwrap_or_else(|| "Alt+O".to_string());
 
-    let menu_show = MenuItem::with_id(app, "show", "Show Lovshot", true, None::<&str>)?;
+    let menu_show = MenuItem::with_id(app, "show", "Show Lovshot", true, Some(show_main_shortcut.as_str()))?;
     let menu_sep0 = PredefinedMenuItem::separator(app)?;
     let menu_screenshot = MenuItem::with_id(
         app,
