@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg(target_os = "macos")]
@@ -43,6 +44,10 @@ pub fn run() {
     let state_for_tray = state.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -120,6 +125,8 @@ pub fn run() {
             commands::open_scroll_overlay,
             commands::get_history,
             commands::get_stats,
+            commands::get_autostart_enabled,
+            commands::set_autostart_enabled,
             show_main_window,
         ])
         .on_window_event(|window, event| {
@@ -201,6 +208,15 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             register_shortcuts_from_config(&app_handle)?;
+
+            // Sync autostart state from config on startup
+            let cfg = config::load_config();
+            let autostart = app.autolaunch();
+            if cfg.autostart_enabled {
+                let _ = autostart.enable();
+            } else {
+                let _ = autostart.disable();
+            }
 
             if let Some(main_win) = app.get_webview_window("main") {
                 let _ = main_win.hide();

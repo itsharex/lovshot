@@ -47,6 +47,12 @@ pub struct AppConfig {
     pub shortcuts: HashMap<String, ShortcutConfig>,
     #[serde(default)]
     pub developer_mode: bool,
+    #[serde(default = "default_autostart")]
+    pub autostart_enabled: bool,
+}
+
+fn default_autostart() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -93,6 +99,7 @@ impl Default for AppConfig {
             version: "1.0.0".to_string(),
             shortcuts,
             developer_mode: false,
+            autostart_enabled: true,
         }
     }
 }

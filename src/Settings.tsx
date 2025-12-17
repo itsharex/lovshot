@@ -12,6 +12,7 @@ interface AppConfig {
   version: string;
   shortcuts: Record<string, ShortcutConfig>;
   developer_mode: boolean;
+  autostart_enabled: boolean;
 }
 
 type EditingAction = "screenshot" | "gif" | "video" | "scroll" | null;
@@ -174,6 +175,18 @@ export default function Settings() {
     }
   }, [config]);
 
+  const handleToggleAutostart = useCallback(async () => {
+    if (!config) return;
+    try {
+      const newConfig = await invoke<AppConfig>("set_autostart_enabled", {
+        enabled: !config.autostart_enabled,
+      });
+      setConfig(newConfig);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [config]);
+
   const handleClose = useCallback(async () => {
     await getCurrentWindow().close();
   }, []);
@@ -229,6 +242,23 @@ export default function Settings() {
         </div>
         {debugInfo && <div className="debug-info">{debugInfo}</div>}
         {error && <div className="error-message">{error}</div>}
+      </section>
+
+      <section className="settings-section">
+        <h2 className="section-title">General</h2>
+        <div className="settings-card">
+          <div className="setting-row">
+            <span className="setting-label">Launch at Login</span>
+            <button
+              role="switch"
+              aria-checked={config.autostart_enabled}
+              className={`switch ${config.autostart_enabled ? "switch-on" : ""}`}
+              onClick={handleToggleAutostart}
+            >
+              <span className="switch-thumb" />
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="settings-section">

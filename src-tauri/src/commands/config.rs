@@ -1,4 +1,5 @@
 use tauri::AppHandle;
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 use crate::config::{self, AppConfig, ShortcutConfig};
@@ -76,4 +77,26 @@ pub fn resume_shortcuts(app: AppHandle, state: tauri::State<SharedState>) -> Res
     register_shortcuts_from_config(&app)?;
     println!("[shortcuts] Resumed shortcuts");
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    let autostart = app.autolaunch();
+    autostart.is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_autostart_enabled(app: AppHandle, enabled: bool) -> Result<AppConfig, String> {
+    let autostart = app.autolaunch();
+
+    if enabled {
+        autostart.enable().map_err(|e| e.to_string())?;
+    } else {
+        autostart.disable().map_err(|e| e.to_string())?;
+    }
+
+    let mut cfg = config::load_config();
+    cfg.autostart_enabled = enabled;
+    config::save_config(&cfg)?;
+    Ok(cfg)
 }
