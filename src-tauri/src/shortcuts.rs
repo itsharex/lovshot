@@ -117,8 +117,18 @@ pub fn format_shortcut_display(s: &str) -> String {
 
 /// Check if a shortcut is a stop_recording shortcut
 pub fn is_stop_recording_shortcut(shortcut: &Shortcut) -> bool {
+    is_shortcut_for_action(shortcut, "stop_recording")
+}
+
+/// Check if a shortcut is a show_main shortcut
+pub fn is_show_main_shortcut(shortcut: &Shortcut) -> bool {
+    is_shortcut_for_action(shortcut, "show_main")
+}
+
+/// Generic check if a shortcut matches an action
+fn is_shortcut_for_action(shortcut: &Shortcut, action: &str) -> bool {
     let config = config::load_config();
-    if let Some(shortcuts) = config.shortcuts.get("stop_recording") {
+    if let Some(shortcuts) = config.shortcuts.get(action) {
         for cfg in shortcuts {
             if !cfg.enabled {
                 continue;

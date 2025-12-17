@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 interface HistoryItem {
@@ -10,6 +11,13 @@ interface HistoryItem {
   modified: number;
   size: number;
   thumbnail: string;
+  isLoading?: boolean; // 占位符状态
+}
+
+interface SaveResult {
+  success: boolean;
+  path: string | null;
+  error: string | null;
 }
 
 interface HistoryResponse {
@@ -99,6 +107,87 @@ function App() {
       setLoading(false);
     }
   }, [history.length, loading, filter, isWideScreen]);
+
+  // 实时监听新截图/GIF 保存事件
+  useEffect(() => {
+    const unlistenScreenshot = listen<string>("screenshot-saved", (event) => {
+      const path = event.payload;
+      const filename = path.split("/").pop() || path;
+      // 插入 loading 占位符
+      const placeholder: HistoryItem = {
+        path,
+        filename,
+        file_type: "screenshot",
+        modified: Math.floor(Date.now() / 1000),
+        size: 0,
+        thumbnail: "",
+        isLoading: true,
+      };
+      setHistory((prev) => [placeholder, ...prev]);
+      loadStats();
+      // 延迟获取完整信息（等文件写入完成）
+      setTimeout(async () => {
+        try {
+          const res = await invoke<HistoryResponse>("get_history", {
+            offset: 0,
+            limit: 1,
+            filterType: null,
+          });
+          if (res.items.length > 0) {
+            setHistory((prev) =>
+              prev.map((item) =>
+                item.path === path ? { ...res.items[0], isLoading: false } : item
+              )
+            );
+          }
+        } catch (e) {
+          console.error("获取新截图信息失败:", e);
+        }
+      }, 100);
+    });
+
+    const unlistenGif = listen<SaveResult>("export-complete", (event) => {
+      const { success, path } = event.payload;
+      if (!success || !path) return;
+      const filename = path.split("/").pop() || path;
+      // 插入 loading 占位符
+      const placeholder: HistoryItem = {
+        path,
+        filename,
+        file_type: "gif",
+        modified: Math.floor(Date.now() / 1000),
+        size: 0,
+        thumbnail: "",
+        isLoading: true,
+      };
+      setHistory((prev) => [placeholder, ...prev]);
+      loadStats();
+      // 延迟获取完整信息
+      setTimeout(async () => {
+        try {
+          const res = await invoke<HistoryResponse>("get_history", {
+            offset: 0,
+            limit: 1,
+            filterType: "gif",
+          });
+          if (res.items.length > 0 && res.items[0].path === path) {
+            setHistory((prev) =>
+              prev.map((item) =>
+                item.path === path ? { ...res.items[0], isLoading: false } : item
+              )
+            );
+          }
+        } catch (e) {
+          console.error("获取新 GIF 信息失败:", e);
+        }
+      }, 100);
+    });
+
+    return () => {
+      unlistenScreenshot.then((fn) => fn());
+      unlistenGif.then((fn) => fn());
+    };
+  }, [loadStats]);
 
   useEffect(() => {
     loadStats();
@@ -218,15 +307,21 @@ function App() {
                 {history.map((item) => (
                   <div
                     key={item.path}
-                    className={`history-item ${selected?.path === item.path ? "selected" : ""}`}
-                    onClick={() => handleItemClick(item)}
+                    className={`history-item ${selected?.path === item.path ? "selected" : ""} ${item.isLoading ? "loading" : ""}`}
+                    onClick={() => !item.isLoading && handleItemClick(item)}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      invoke("reveal_in_folder", { path: item.path });
+                      if (!item.isLoading) {
+                        invoke("reveal_in_folder", { path: item.path });
+                      }
                     }}
                     title={isWideScreen ? item.filename : `${item.filename}\n${formatSize(item.size)}\n右键在 Finder 中显示`}
                   >
-                    {item.thumbnail ? (
+                    {item.isLoading ? (
+                      <div className="history-thumb-loading">
+                        <div className="loading-spinner" />
+                      </div>
+                    ) : item.thumbnail ? (
                       <img src={item.thumbnail} alt={item.filename} className="history-thumb" />
                     ) : (
                       <div className="history-thumb-placeholder" />

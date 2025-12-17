@@ -270,7 +270,10 @@ pub fn save_screenshot(
     })?;
     println!("[DEBUG][save_screenshot] 文件保存成功");
 
-    Ok(filename.to_string_lossy().to_string())
+    let path_str = filename.to_string_lossy().to_string();
+    let _ = app.emit("screenshot-saved", &path_str);
+
+    Ok(path_str)
 }
 
 #[tauri::command]

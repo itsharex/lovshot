@@ -134,6 +134,15 @@ impl Default for AppConfig {
             }],
         );
 
+        shortcuts.insert(
+            "show_main".to_string(),
+            vec![ShortcutConfig {
+                modifiers: vec!["Alt".to_string()],
+                key: "O".to_string(),
+                enabled: true,
+            }],
+        );
+
         Self {
             version: "2.0.0".to_string(),
             shortcuts,

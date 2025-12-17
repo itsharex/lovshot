@@ -26,6 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
   stop_recording: "Stop GIF (extra)",
   video: "Record Video",
   scroll: "Scroll Capture",
+  show_main: "Open Main Panel",
 };
 
 function formatShortcut(cfg: ShortcutConfig): string {
@@ -234,8 +235,8 @@ export default function Settings() {
   }
 
   const actions = config.developer_mode
-    ? ["screenshot", "gif", "stop_recording", "scroll", "video"]
-    : ["screenshot", "gif", "stop_recording", "video"];
+    ? ["screenshot", "gif", "stop_recording", "scroll", "video", "show_main"]
+    : ["screenshot", "gif", "stop_recording", "video", "show_main"];
 
   return (
     <div className="settings-container" ref={containerRef} tabIndex={-1}>

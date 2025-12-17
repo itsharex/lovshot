@@ -21,7 +21,7 @@ mod types;
 mod windows;
 
 use commands::open_selector_internal;
-use shortcuts::{get_action_for_shortcut, is_stop_recording_shortcut, register_shortcuts_from_config, unregister_stop_shortcuts};
+use shortcuts::{get_action_for_shortcut, is_show_main_shortcut, is_stop_recording_shortcut, register_shortcuts_from_config, unregister_stop_shortcuts};
 use state::{AppState, SharedState};
 use tray::{build_tray_menu, load_tray_icon};
 pub use types::*;
@@ -86,6 +86,17 @@ pub fn run() {
                                 println!("[DEBUG][shortcut] 关闭选择器");
                                 let _ = selector_win.close();
                             }
+                        }
+                        return;
+                    }
+
+                    // Check if this is show_main shortcut (Alt+O)
+                    if is_show_main_shortcut(shortcut) {
+                        println!("[DEBUG][shortcut] 打开主窗口");
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                            windows::set_activation_policy(0);
                         }
                         return;
                     }
