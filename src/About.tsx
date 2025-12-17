@@ -1,6 +1,14 @@
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 
 export default function About() {
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setVersion);
+  }, []);
+
   const handleClose = async () => {
     await getCurrentWindow().close();
   };
@@ -11,7 +19,7 @@ export default function About() {
         <img src="/logo.svg" alt="Lovshot" width={64} height={64} />
       </div>
       <h1>Lovshot</h1>
-      <p className="version">Version 0.1.0</p>
+      <p className="version">Version {version}</p>
       <p className="description">
         A beautiful screen capture tool for macOS.
         <br />
