@@ -12,16 +12,42 @@ pub fn get_shortcuts_config() -> AppConfig {
     config::load_config()
 }
 
+/// Save all shortcuts for an action (replaces existing)
 #[tauri::command]
 pub fn save_shortcut(
     app: AppHandle,
     action: String,
-    shortcut_str: String,
+    shortcuts: Vec<ShortcutConfig>,
 ) -> Result<AppConfig, String> {
-    let shortcut =
-        ShortcutConfig::from_shortcut_string(&shortcut_str).ok_or("Invalid shortcut format")?;
+    let new_config = config::update_shortcuts(&action, shortcuts)?;
+    register_shortcuts_from_config(&app)?;
+    update_tray_menu(&app);
 
-    let new_config = config::update_shortcut(&action, shortcut)?;
+    Ok(new_config)
+}
+
+/// Add a single shortcut to an action
+#[tauri::command]
+pub fn add_shortcut(
+    app: AppHandle,
+    action: String,
+    shortcut: ShortcutConfig,
+) -> Result<AppConfig, String> {
+    let new_config = config::add_shortcut(&action, shortcut)?;
+    register_shortcuts_from_config(&app)?;
+    update_tray_menu(&app);
+
+    Ok(new_config)
+}
+
+/// Remove a shortcut from an action by index
+#[tauri::command]
+pub fn remove_shortcut(
+    app: AppHandle,
+    action: String,
+    index: usize,
+) -> Result<AppConfig, String> {
+    let new_config = config::remove_shortcut(&action, index)?;
     register_shortcuts_from_config(&app)?;
     update_tray_menu(&app);
 

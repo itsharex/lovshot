@@ -77,20 +77,27 @@ pub fn parse_shortcut(s: &str) -> Result<Shortcut, String> {
 pub fn get_action_for_shortcut(shortcut: &Shortcut) -> Option<CaptureMode> {
     let config = config::load_config();
 
-    for (action, cfg) in &config.shortcuts {
-        if !cfg.enabled {
+    for (action, shortcuts) in &config.shortcuts {
+        // Skip stop_recording - it's handled locally by overlay, not as a capture mode
+        if action == "stop_recording" {
             continue;
         }
-        let shortcut_str = cfg.to_shortcut_string();
-        if let Ok(parsed) = parse_shortcut(&shortcut_str) {
-            if &parsed == shortcut {
-                return match action.as_str() {
-                    "screenshot" => Some(CaptureMode::Image),
-                    "gif" => Some(CaptureMode::Gif),
-                    "video" => Some(CaptureMode::Video),
-                    "scroll" => Some(CaptureMode::Scroll),
-                    _ => None,
-                };
+
+        for cfg in shortcuts {
+            if !cfg.enabled {
+                continue;
+            }
+            let shortcut_str = cfg.to_shortcut_string();
+            if let Ok(parsed) = parse_shortcut(&shortcut_str) {
+                if &parsed == shortcut {
+                    return match action.as_str() {
+                        "screenshot" => Some(CaptureMode::Image),
+                        "gif" => Some(CaptureMode::Gif),
+                        "video" => Some(CaptureMode::Video),
+                        "scroll" => Some(CaptureMode::Scroll),
+                        _ => None,
+                    };
+                }
             }
         }
     }
@@ -108,6 +115,25 @@ pub fn format_shortcut_display(s: &str) -> String {
         .replace("Meta+", "⌘")
 }
 
+/// Check if a shortcut is a stop_recording shortcut
+pub fn is_stop_recording_shortcut(shortcut: &Shortcut) -> bool {
+    let config = config::load_config();
+    if let Some(shortcuts) = config.shortcuts.get("stop_recording") {
+        for cfg in shortcuts {
+            if !cfg.enabled {
+                continue;
+            }
+            let shortcut_str = cfg.to_shortcut_string();
+            if let Ok(parsed) = parse_shortcut(&shortcut_str) {
+                if &parsed == shortcut {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Register shortcuts from config (called at startup and when config changes)
 pub fn register_shortcuts_from_config(app: &AppHandle) -> Result<(), String> {
     let config = config::load_config();
@@ -116,25 +142,27 @@ pub fn register_shortcuts_from_config(app: &AppHandle) -> Result<(), String> {
         eprintln!("[shortcuts] Failed to unregister all: {}", e);
     }
 
-    for (action, shortcut_cfg) in &config.shortcuts {
-        if !shortcut_cfg.enabled {
-            continue;
-        }
-
-        let shortcut_str = shortcut_cfg.to_shortcut_string();
-        match parse_shortcut(&shortcut_str) {
-            Ok(shortcut) => {
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    eprintln!(
-                        "[shortcuts] Failed to register {} ({}): {}",
-                        action, shortcut_str, e
-                    );
-                } else {
-                    println!("[shortcuts] Registered {} -> {}", action, shortcut_str);
-                }
+    for (action, shortcuts) in &config.shortcuts {
+        for shortcut_cfg in shortcuts {
+            if !shortcut_cfg.enabled {
+                continue;
             }
-            Err(e) => {
-                eprintln!("[shortcuts] Invalid shortcut for {}: {}", action, e);
+
+            let shortcut_str = shortcut_cfg.to_shortcut_string();
+            match parse_shortcut(&shortcut_str) {
+                Ok(shortcut) => {
+                    if let Err(e) = app.global_shortcut().register(shortcut) {
+                        eprintln!(
+                            "[shortcuts] Failed to register {} ({}): {}",
+                            action, shortcut_str, e
+                        );
+                    } else {
+                        println!("[shortcuts] Registered {} -> {}", action, shortcut_str);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[shortcuts] Invalid shortcut for {}: {}", action, e);
+                }
             }
         }
     }

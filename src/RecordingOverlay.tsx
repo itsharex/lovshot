@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./recording-overlay.css";
 
@@ -8,6 +9,40 @@ interface OverlayRegion {
   y: number;
   width: number;
   height: number;
+}
+
+interface ShortcutConfig {
+  modifiers: string[];
+  key: string;
+  enabled: boolean;
+}
+
+interface AppConfig {
+  shortcuts: Record<string, ShortcutConfig[]>;
+}
+
+function matchesShortcut(e: KeyboardEvent, cfg: ShortcutConfig): boolean {
+  if (!cfg.enabled) return false;
+
+  // Check modifiers
+  const needAlt = cfg.modifiers.some((m) => m.toLowerCase() === "alt");
+  const needCtrl = cfg.modifiers.some((m) => ["ctrl", "control"].includes(m.toLowerCase()));
+  const needShift = cfg.modifiers.some((m) => m.toLowerCase() === "shift");
+  const needMeta = cfg.modifiers.some((m) => ["cmd", "command", "super", "meta"].includes(m.toLowerCase()));
+
+  if (e.altKey !== needAlt) return false;
+  if (e.ctrlKey !== needCtrl) return false;
+  if (e.shiftKey !== needShift) return false;
+  if (e.metaKey !== needMeta) return false;
+
+  // Check key
+  const keyLower = cfg.key.toLowerCase();
+  if (keyLower === "escape") return e.key === "Escape";
+  return e.key.toLowerCase() === keyLower || e.code === `Key${cfg.key.toUpperCase()}`;
+}
+
+function matchesAnyShortcut(e: KeyboardEvent, shortcuts: ShortcutConfig[]): boolean {
+  return shortcuts.some((cfg) => matchesShortcut(e, cfg));
 }
 
 export default function RecordingOverlay() {
@@ -35,9 +70,27 @@ export default function RecordingOverlay() {
       await getCurrentWindow().close();
     });
 
+    // Load stop_recording shortcut config and listen for it
+    let handleKeyDown: ((e: KeyboardEvent) => void) | null = null;
+
+    invoke<AppConfig>("get_shortcuts_config").then((config) => {
+      const stopShortcuts = config.shortcuts["stop_recording"] || [];
+      if (stopShortcuts.length > 0) {
+        handleKeyDown = async (e: KeyboardEvent) => {
+          if (matchesAnyShortcut(e, stopShortcuts)) {
+            await invoke("stop_recording");
+          }
+        };
+        document.addEventListener("keydown", handleKeyDown);
+      }
+    });
+
     return () => {
       unlistenRecording.then((fn) => fn());
       unlistenScroll.then((fn) => fn());
+      if (handleKeyDown) {
+        document.removeEventListener("keydown", handleKeyDown);
+      }
     };
   }, []);
 

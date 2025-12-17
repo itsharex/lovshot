@@ -9,24 +9,29 @@ use crate::types::Region;
 /// Build tray menu with current shortcuts from config
 pub fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let cfg = config::load_config();
+    // Get first enabled shortcut for each action (for tray menu display)
     let screenshot_shortcut = cfg
         .shortcuts
         .get("screenshot")
+        .and_then(|v| v.first())
         .map(|s| s.to_shortcut_string())
         .unwrap_or_else(|| "Alt+A".to_string());
     let gif_shortcut = cfg
         .shortcuts
         .get("gif")
+        .and_then(|v| v.first())
         .map(|s| s.to_shortcut_string())
         .unwrap_or_else(|| "Alt+G".to_string());
     let video_shortcut = cfg
         .shortcuts
         .get("video")
+        .and_then(|v| v.first())
         .map(|s| s.to_shortcut_string())
         .unwrap_or_else(|| "Alt+V".to_string());
     let scroll_shortcut = cfg
         .shortcuts
         .get("scroll")
+        .and_then(|v| v.first())
         .map(|s| s.to_shortcut_string())
         .unwrap_or_else(|| "Alt+S".to_string());
 

@@ -21,7 +21,7 @@ mod types;
 mod windows;
 
 use commands::open_selector_internal;
-use shortcuts::{format_shortcut_display, get_action_for_shortcut, register_shortcuts_from_config};
+use shortcuts::{get_action_for_shortcut, is_stop_recording_shortcut, register_shortcuts_from_config};
 use state::{AppState, SharedState};
 use tray::{build_tray_menu, load_tray_icon};
 pub use types::*;
@@ -56,6 +56,7 @@ pub fn run() {
                         return;
                     }
 
+                    // If recording, any registered shortcut stops it
                     let is_recording = state_for_shortcut.lock().unwrap().recording;
                     if is_recording {
                         println!("[DEBUG][shortcut] 停止录制");
@@ -73,6 +74,18 @@ pub fn run() {
                             let _ = app.emit("scroll-capture-stop", ());
                             return;
                         }
+                    }
+
+                    // Check if this is a stop/cancel shortcut (ESC, etc.)
+                    if is_stop_recording_shortcut(shortcut) {
+                        // Close selector window if open
+                        if let Some(selector_win) = app.get_webview_window("selector") {
+                            if selector_win.is_visible().unwrap_or(false) {
+                                println!("[DEBUG][shortcut] 关闭选择器");
+                                let _ = selector_win.close();
+                            }
+                        }
+                        return;
                     }
 
                     if let Some(mode) = get_action_for_shortcut(shortcut) {
@@ -99,6 +112,8 @@ pub fn run() {
             commands::get_window_info_at_cursor,
             commands::get_shortcuts_config,
             commands::save_shortcut,
+            commands::add_shortcut,
+            commands::remove_shortcut,
             commands::reset_shortcuts_to_default,
             commands::pause_shortcuts,
             commands::resume_shortcuts,

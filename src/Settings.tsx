@@ -10,16 +10,20 @@ interface ShortcutConfig {
 
 interface AppConfig {
   version: string;
-  shortcuts: Record<string, ShortcutConfig>;
+  shortcuts: Record<string, ShortcutConfig[]>;
   developer_mode: boolean;
   autostart_enabled: boolean;
 }
 
-type EditingAction = "screenshot" | "gif" | "video" | "scroll" | null;
+type EditingState = {
+  action: string;
+  index: number; // -1 means adding new
+} | null;
 
 const ACTION_LABELS: Record<string, string> = {
   screenshot: "Screenshot",
   gif: "Record GIF",
+  stop_recording: "Stop GIF (extra)",
   video: "Record Video",
   scroll: "Scroll Capture",
 };
@@ -38,12 +42,13 @@ function formatShortcut(cfg: ShortcutConfig): string {
       default: return m;
     }
   });
-  return [...mods, cfg.key].join("");
+  const key = cfg.key === "Escape" ? "Esc" : cfg.key;
+  return [...mods, key].join("");
 }
 
 function parseKeyboardEvent(e: KeyboardEvent): { modifiers: string[]; key: string } | null {
-  // Ignore pure modifier keys
-  if (["Control", "Alt", "Shift", "Meta", "CapsLock", "Tab", "Escape"].includes(e.key)) {
+  // Ignore pure modifier keys (but allow Escape)
+  if (["Control", "Alt", "Shift", "Meta", "CapsLock", "Tab"].includes(e.key)) {
     return null;
   }
 
@@ -53,7 +58,12 @@ function parseKeyboardEvent(e: KeyboardEvent): { modifiers: string[]; key: strin
   if (e.shiftKey) modifiers.push("Shift");
   if (e.metaKey) modifiers.push("Cmd");
 
-  // Must have at least one modifier
+  // Allow Escape without modifiers
+  if (e.key === "Escape") {
+    return { modifiers, key: "Escape" };
+  }
+
+  // Must have at least one modifier for other keys
   if (modifiers.length === 0) {
     return null;
   }
@@ -73,7 +83,7 @@ function parseKeyboardEvent(e: KeyboardEvent): { modifiers: string[]; key: strin
 
 export default function Settings() {
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [editing, setEditing] = useState<EditingAction>(null);
+  const [editing, setEditing] = useState<EditingState>(null);
   const [pendingShortcut, setPendingShortcut] = useState<{ modifiers: string[]; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
@@ -118,8 +128,8 @@ export default function Settings() {
     };
   }, [editing]);
 
-  const startEditing = useCallback((action: EditingAction) => {
-    setEditing(action);
+  const startEditing = useCallback((action: string, index: number) => {
+    setEditing({ action, index });
     setPendingShortcut(null);
     setError(null);
     // Focus the container to receive keyboard events
@@ -127,15 +137,31 @@ export default function Settings() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!editing || !pendingShortcut) return;
+    if (!editing || !pendingShortcut || !config) return;
 
-    const shortcutStr = [...pendingShortcut.modifiers, pendingShortcut.key].join("+");
+    const newShortcut: ShortcutConfig = {
+      modifiers: pendingShortcut.modifiers,
+      key: pendingShortcut.key,
+      enabled: true,
+    };
 
     try {
-      const newConfig = await invoke<AppConfig>("save_shortcut", {
-        action: editing,
-        shortcutStr,
-      });
+      let newConfig: AppConfig;
+      if (editing.index === -1) {
+        // Adding new shortcut
+        newConfig = await invoke<AppConfig>("add_shortcut", {
+          action: editing.action,
+          shortcut: newShortcut,
+        });
+      } else {
+        // Editing existing shortcut - replace all with updated list
+        const shortcuts = [...(config.shortcuts[editing.action] || [])];
+        shortcuts[editing.index] = newShortcut;
+        newConfig = await invoke<AppConfig>("save_shortcut", {
+          action: editing.action,
+          shortcuts,
+        });
+      }
       setConfig(newConfig);
       setEditing(null);
       setPendingShortcut(null);
@@ -144,7 +170,19 @@ export default function Settings() {
     } catch (e) {
       setError(String(e));
     }
-  }, [editing, pendingShortcut]);
+  }, [editing, pendingShortcut, config]);
+
+  const handleRemove = useCallback(async (action: string, index: number) => {
+    try {
+      const newConfig = await invoke<AppConfig>("remove_shortcut", {
+        action,
+        index,
+      });
+      setConfig(newConfig);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
 
   const handleCancel = useCallback(() => {
     setEditing(null);
@@ -195,31 +233,77 @@ export default function Settings() {
     return <div className="settings-container">Loading...</div>;
   }
 
+  const actions = config.developer_mode
+    ? ["screenshot", "gif", "stop_recording", "scroll", "video"]
+    : ["screenshot", "gif", "stop_recording", "video"];
+
   return (
     <div className="settings-container" ref={containerRef} tabIndex={-1}>
       <section className="settings-section">
         <h2 className="section-title">Shortcuts</h2>
         <div className="settings-card">
-          {(config.developer_mode
-            ? (["screenshot", "gif", "scroll", "video"] as const)
-            : (["screenshot", "gif", "video"] as const)
-          ).map((action, index, arr) => {
-            const cfg = config.shortcuts[action];
-            const isEditing = editing === action;
-            const displayValue = cfg ? formatShortcut(cfg) : "Not set";
-            const pendingDisplay = pendingShortcut
-              ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
-              : null;
+          {actions.map((action, actionIndex) => {
+            const shortcuts = config.shortcuts[action] || [];
+            const isEditingThisAction = editing?.action === action;
+            const isAdding = isEditingThisAction && editing?.index === -1;
 
             return (
-              <div key={action} className={`setting-row ${isEditing ? "editing" : ""} ${index < arr.length - 1 ? "has-border" : ""}`}>
+              <div key={action} className={`setting-row ${actionIndex < actions.length - 1 ? "has-border" : ""}`}>
                 <span className="setting-label">{ACTION_LABELS[action]}</span>
                 <div className="setting-control">
-                  {isEditing ? (
-                    <>
-                      <span className={`shortcut-key ${pendingDisplay ? "captured" : "recording"}`}>
-                        {pendingDisplay || "Press shortcut..."}
+                  {/* Show existing shortcuts as tags */}
+                  {shortcuts.map((cfg, idx) => {
+                    const isEditingThis = isEditingThisAction && editing?.index === idx;
+
+                    if (isEditingThis) {
+                      const pendingDisplay = pendingShortcut
+                        ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
+                        : null;
+                      return (
+                        <span key={idx} className={`shortcut-key ${pendingDisplay ? "captured" : "recording"}`}>
+                          {pendingDisplay || "Press..."}
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <span
+                        key={idx}
+                        className="shortcut-key clickable"
+                        onClick={() => startEditing(action, idx)}
+                        title="Click to edit"
+                      >
+                        {formatShortcut(cfg)}
+                        {shortcuts.length > 1 && (
+                          <span
+                            className="shortcut-remove"
+                            onClick={(e) => { e.stopPropagation(); handleRemove(action, idx); }}
+                            title="Remove"
+                          >
+                            ×
+                          </span>
+                        )}
                       </span>
+                    );
+                  })}
+
+                  {/* Adding new shortcut */}
+                  {isAdding && (
+                    <span className={`shortcut-key ${pendingShortcut ? "captured" : "recording"}`}>
+                      {pendingShortcut
+                        ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
+                        : "Press..."}
+                    </span>
+                  )}
+
+                  {/* Empty state */}
+                  {shortcuts.length === 0 && !isAdding && (
+                    <span className="shortcut-key text-muted">Not set</span>
+                  )}
+
+                  {/* Action buttons */}
+                  {isEditingThisAction ? (
+                    <>
                       <button className="btn-small" onClick={handleSave} disabled={!pendingShortcut}>
                         Save
                       </button>
@@ -228,12 +312,13 @@ export default function Settings() {
                       </button>
                     </>
                   ) : (
-                    <>
-                      <span className="shortcut-key">{displayValue}</span>
-                      <button className="btn-small" onClick={() => startEditing(action)}>
-                        Edit
-                      </button>
-                    </>
+                    <button
+                      className="btn-icon"
+                      onClick={() => startEditing(action, -1)}
+                      title="Add shortcut"
+                    >
+                      +
+                    </button>
                   )}
                 </div>
               </div>
