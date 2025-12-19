@@ -653,6 +653,7 @@ pub struct HistoryItem {
     pub modified: u64,     // unix timestamp
     pub size: u64,         // file size in bytes
     pub thumbnail: String, // base64 data URL
+    pub description: Option<String>, // Finder comment / caption
 }
 
 #[derive(serde::Serialize)]
@@ -769,13 +770,18 @@ pub async fn get_history(
         // Step 5: Map to HistoryItem (no thumbnail generation - frontend uses original files)
         let items: Vec<HistoryItem> = page_files
             .into_iter()
-            .map(|f| HistoryItem {
-                path: f.path.to_string_lossy().to_string(),
-                filename: f.filename,
-                file_type: f.file_type,
-                modified: f.modified,
-                size: f.size,
-                thumbnail: String::new(),
+            .map(|f| {
+                let path_str = f.path.to_string_lossy().to_string();
+                let description = read_finder_comment(&path_str);
+                HistoryItem {
+                    path: path_str,
+                    filename: f.filename,
+                    file_type: f.file_type,
+                    modified: f.modified,
+                    size: f.size,
+                    thumbnail: String::new(),
+                    description,
+                }
             })
             .collect();
 
@@ -943,4 +949,37 @@ tell application "Finder" to set comment of theFile to "{}""#,
 
     println!("[save_caption] Finder comment set successfully");
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn read_finder_comment(path: &str) -> Option<String> {
+    use std::process::Command;
+
+    let script = format!(
+        r#"set theFile to POSIX file "{}" as alias
+tell application "Finder" to get comment of theFile"#,
+        path.replace("\\", "\\\\").replace("\"", "\\\"")
+    );
+
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let comment = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if comment.is_empty() {
+            None
+        } else {
+            Some(comment)
+        }
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_finder_comment(_path: &str) -> Option<String> {
+    None
 }

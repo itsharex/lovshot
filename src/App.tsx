@@ -11,6 +11,7 @@ interface HistoryItem {
   modified: number;
   size: number;
   thumbnail: string;
+  description?: string; // Finder comment / caption
   isLoading?: boolean; // 占位符状态
 }
 
@@ -324,7 +325,7 @@ function App() {
                 {history.map((item) => (
                   <div
                     key={item.path}
-                    className={`history-item ${selected?.path === item.path ? "selected" : ""} ${item.isLoading ? "loading" : ""}`}
+                    className={`history-item ${selected?.path === item.path ? "selected" : ""} ${item.isLoading ? "loading" : ""} ${item.description ? "has-description" : ""}`}
                     onClick={() => !item.isLoading && handleItemClick(item)}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -344,6 +345,9 @@ function App() {
                     <span className={`history-badge history-badge-${item.file_type}`}>
                       {item.file_type === "gif" ? "GIF" : "IMG"}
                     </span>
+                    {item.description && (
+                      <div className="history-description">{item.description}</div>
+                    )}
                   </div>
                 ))}
               </div>
