@@ -204,17 +204,6 @@ export default function Settings() {
     }
   }, []);
 
-  const handleToggleDeveloperMode = useCallback(async () => {
-    if (!config) return;
-    try {
-      const newConfig = await invoke<AppConfig>("set_developer_mode", {
-        enabled: !config.developer_mode,
-      });
-      setConfig(newConfig);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, [config]);
 
   const handleToggleAutostart = useCallback(async () => {
     if (!config) return;
@@ -248,9 +237,7 @@ export default function Settings() {
     return <div className="settings-container">Loading...</div>;
   }
 
-  const actions = config.developer_mode
-    ? ["screenshot", "gif", "stop_recording", "scroll", "video", "show_main"]
-    : ["screenshot", "gif", "stop_recording", "video", "show_main"];
+  const actions = ["screenshot", "gif", "stop_recording", "scroll", "video", "show_main"];
 
   return (
     <div className="settings-container" ref={containerRef} tabIndex={-1}>
@@ -372,30 +359,17 @@ export default function Settings() {
           <AccordionTrigger>Advanced</AccordionTrigger>
           <AccordionContent>
             <div className="settings-card">
-              <div className={`setting-row ${config.developer_mode ? "has-border" : ""}`}>
-                <span className="setting-label">Developer Mode</span>
+              <div className="setting-row">
+                <span className="setting-label">Scroll Capture (Preview)</span>
                 <button
                   role="switch"
-                  aria-checked={config.developer_mode}
-                  className={`switch ${config.developer_mode ? "switch-on" : ""}`}
-                  onClick={handleToggleDeveloperMode}
+                  aria-checked={config.scroll_capture_enabled}
+                  className={`switch ${config.scroll_capture_enabled ? "switch-on" : ""}`}
+                  onClick={handleToggleScrollCapture}
                 >
                   <span className="switch-thumb" />
                 </button>
               </div>
-              {config.developer_mode && (
-                <div className="setting-row">
-                  <span className="setting-label">Scroll Capture (Preview)</span>
-                  <button
-                    role="switch"
-                    aria-checked={config.scroll_capture_enabled}
-                    className={`switch ${config.scroll_capture_enabled ? "switch-on" : ""}`}
-                    onClick={handleToggleScrollCapture}
-                  >
-                    <span className="switch-thumb" />
-                  </button>
-                </div>
-              )}
             </div>
           </AccordionContent>
         </AccordionItem>
