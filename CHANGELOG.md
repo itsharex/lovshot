@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.2
+
+### Patch Changes
+
+- 修复构建：移除未使用的 handleSave 函数
+
 ## 0.15.1
 
 ### Patch Changes

@@ -29,15 +29,6 @@ export default function Preview() {
     }
   };
 
-  const handleSave = async () => {
-    console.log("[Preview] handleSave called");
-    const text = captionRef.current.trim();
-    if (text) {
-      invoke("save_caption", { path, caption: text }).catch(console.error);
-    }
-    await handleClose();
-  };
-
   useEffect(() => {
     if (!isCaptionMode) return;
 
