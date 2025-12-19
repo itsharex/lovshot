@@ -961,29 +961,23 @@ tell application "Finder" to set comment of theFile to "{}""#,
 
 #[cfg(target_os = "macos")]
 fn read_finder_comment(path: &str) -> Option<String> {
-    use std::process::Command;
+    use std::path::Path;
 
-    let script = format!(
-        r#"set theFile to POSIX file "{}" as alias
-tell application "Finder" to get comment of theFile"#,
-        path.replace("\\", "\\\\").replace("\"", "\\\"")
-    );
+    // Read directly from extended attribute (much faster than osascript)
+    let xattr_name = "com.apple.metadata:kMDItemFinderComment";
+    let path = Path::new(path);
 
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()
-        .ok()?;
+    // Get xattr value as bytes
+    let value = xattr::get(path, xattr_name).ok()??;
 
-    if output.status.success() {
-        let comment = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if comment.is_empty() {
-            None
-        } else {
-            Some(comment)
-        }
-    } else {
+    // Parse plist to extract the string
+    let plist: plist::Value = plist::from_bytes(&value).ok()?;
+    let comment = plist.as_string()?.to_string();
+
+    if comment.is_empty() {
         None
+    } else {
+        Some(comment)
     }
 }
 

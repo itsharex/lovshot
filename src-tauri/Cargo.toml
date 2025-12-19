@@ -47,4 +47,6 @@ objc = "0.2"
 core-graphics = "0.24"
 core-foundation = "0.10"
 accessibility-sys = "0.1"
+xattr = "1"
+plist = "1"
 
