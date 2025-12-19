@@ -73,6 +73,17 @@ h1 {
   color: var(--muted-foreground);
 }
 
+.copyright a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.copyright a:hover {
+  color: var(--primary);
+  opacity: 0.9;
+}
+
 .btn-primary {
   padding: 0.5rem 2rem;
   background: var(--primary);
