@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.1
+
+### Patch Changes
+
+- 截图描述功能优化：无边框圆角 UI、实时同步到 Dashboard、历史记录显示描述
+
 ## 0.15.0
 
 ### Minor Changes
