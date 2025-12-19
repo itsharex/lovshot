@@ -51,3 +51,8 @@ pnpm build          # Type check (tsc && vite build)
 ## Bundle Identifier
 
 `app.lovpen.shot`
+
+## Project Info
+
+- **Developer**: Lovstudio
+- **Website**: https://lovstudio.vercel.app/app/lovshot

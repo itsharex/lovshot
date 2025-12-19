@@ -69,7 +69,8 @@ pub fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error
     let menu_sep1 = PredefinedMenuItem::separator(app)?;
     let menu_settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let menu_sep2 = PredefinedMenuItem::separator(app)?;
-    let menu_about = MenuItem::with_id(app, "about", "About Lovshot", true, None::<&str>)?;
+    let version = app.package_info().version.to_string();
+    let menu_about = MenuItem::with_id(app, "about", &format!("About ({})", version), true, None::<&str>)?;
     let menu_sep3 = PredefinedMenuItem::separator(app)?;
     let menu_quit = MenuItem::with_id(app, "quit", "Quit Lovshot", true, None::<&str>)?;
 

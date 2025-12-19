@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function About() {
   const [version, setVersion] = useState("");
@@ -26,7 +27,18 @@ export default function About() {
         Screenshots, GIFs, and more.
       </p>
       <div className="about-footer">
-        <p className="copyright">Made with love by LovPen</p>
+        <p className="copyright">
+          Made with love by{" "}
+          <a
+            href="https://lovstudio.vercel.app/app/lovshot"
+            onClick={(e) => {
+              e.preventDefault();
+              invoke("plugin:opener|open_url", { url: "https://lovstudio.vercel.app/app/lovshot" });
+            }}
+          >
+            Lovstudio
+          </a>
+        </p>
         <button className="btn-primary" onClick={handleClose}>
           OK
         </button>
