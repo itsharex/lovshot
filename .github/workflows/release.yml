@@ -102,14 +102,33 @@ jobs:
 
       - run: pnpm install
 
-      - name: Get tag name
+      - name: Get tag name and release notes
         id: tag
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.event.inputs.tag }}"
           else
-            echo "name=${{ needs.release.outputs.tag_name }}" >> $GITHUB_OUTPUT
+            TAG="${{ needs.release.outputs.tag_name }}"
+          fi
+          echo "name=$TAG" >> $GITHUB_OUTPUT
+
+          # Extract release notes from CHANGELOG.md
+          VERSION="${TAG#v}"
+          if [ -f CHANGELOG.md ]; then
+            # Extract content between version header and next version header
+            NOTES=$(awk -v ver="$VERSION" '
+              /^## / {
+                if (found) exit
+                if ($2 == ver) { found=1; next }
+              }
+              found { print }
+            ' CHANGELOG.md)
+            # Escape for GitHub Actions output
+            NOTES="${NOTES//'%'/'%25'}"
+            NOTES="${NOTES//$'\n'/'%0A'}"
+            NOTES="${NOTES//$'\r'/'%0D'}"
+            echo "notes=$NOTES" >> $GITHUB_OUTPUT
           fi
 
       - uses: tauri-apps/tauri-action@v0
@@ -118,7 +137,7 @@ jobs:
         with:
           tagName: ${{ steps.tag.outputs.name }}
           releaseName: lovshot ${{ steps.tag.outputs.name }}
-          releaseBody: "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          releaseBody: ${{ steps.tag.outputs.notes }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
