@@ -183,6 +183,7 @@ pub fn run() {
             commands::get_frame_thumbnail,
             commands::get_filmstrip,
             commands::save_screenshot,
+            commands::save_caption,
             commands::open_file,
             commands::reveal_in_folder,
             // Scroll capture commands

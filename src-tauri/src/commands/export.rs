@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::thread;
 
@@ -183,12 +184,13 @@ pub fn get_filmstrip(
     Ok(thumbnails)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn save_screenshot(
     app: AppHandle,
     state: tauri::State<SharedState>,
     scale: Option<f32>,
     use_cached: Option<bool>,
+    caption_mode: Option<bool>,
 ) -> Result<String, String> {
     println!("[DEBUG][save_screenshot] ====== 被调用 ======");
     let s = state.lock().unwrap();
@@ -200,8 +202,8 @@ pub fn save_screenshot(
     let screen_y = s.screen_y;
     let is_static_mode = use_cached.unwrap_or(false) && cached_snapshot.is_some();
     println!(
-        "[DEBUG][save_screenshot] region: x={}, y={}, w={}, h={}, scale={}, static={}",
-        region.x, region.y, region.width, region.height, output_scale, is_static_mode
+        "[DEBUG][save_screenshot] region: x={}, y={}, w={}, h={}, scale={}, static={}, caption_mode={:?}",
+        region.x, region.y, region.width, region.height, output_scale, is_static_mode, caption_mode
     );
     drop(s);
 
@@ -308,12 +310,20 @@ pub fn save_screenshot(
     let path_str = filename.to_string_lossy().to_string();
     let _ = app.emit("screenshot-saved", &path_str);
 
-    // Show preview window if enabled
-    let cfg = crate::config::load_config();
-    println!("[save_screenshot] screenshot_preview_enabled: {}", cfg.screenshot_preview_enabled);
-    if cfg.screenshot_preview_enabled {
-        if let Err(e) = crate::windows::open_preview_window(&app, &path_str) {
-            println!("[save_screenshot] Failed to open preview: {}", e);
+    // Show preview window: caption mode takes priority, then normal preview
+    let is_caption_mode = caption_mode.unwrap_or(false);
+    if is_caption_mode {
+        println!("[save_screenshot] Opening caption preview window");
+        if let Err(e) = crate::windows::open_caption_window(&app, &path_str) {
+            println!("[save_screenshot] Failed to open caption window: {}", e);
+        }
+    } else {
+        let cfg = crate::config::load_config();
+        println!("[save_screenshot] screenshot_preview_enabled: {}", cfg.screenshot_preview_enabled);
+        if cfg.screenshot_preview_enabled {
+            if let Err(e) = crate::windows::open_preview_window(&app, &path_str) {
+                println!("[save_screenshot] Failed to open preview: {}", e);
+            }
         }
     }
 
@@ -861,4 +871,76 @@ pub async fn get_stats() -> Result<StatsResponse, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn save_caption(app: AppHandle, path: String, caption: String) -> Result<(), String> {
+    println!("[save_caption] path: {}, caption: {}", path, caption);
+
+    let input_path = PathBuf::from(&path);
+    if !input_path.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+
+    // Write PNG Comment using png crate in a separate thread
+    let path_clone = path.clone();
+    let caption_clone = caption.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = write_png_comment(&path_clone, &caption_clone) {
+            println!("[save_caption] PNG comment error: {}", e);
+        }
+    });
+
+    println!("[save_caption] Caption save initiated");
+
+    // Close all caption windows from backend
+    use tauri::Manager;
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("caption-") {
+            println!("[save_caption] Closing window: {}", label);
+            let _ = window.destroy();
+        }
+    }
+
+    Ok(())
+}
+
+fn write_png_comment(path: &str, comment: &str) -> Result<(), String> {
+    // Set Finder comment using AppleScript via stdin (handles unicode properly)
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        // AppleScript to set Finder comment
+        let script = format!(
+            r#"set theFile to POSIX file "{}" as alias
+tell application "Finder" to set comment of theFile to "{}""#,
+            path.replace("\\", "\\\\").replace("\"", "\\\""),
+            comment.replace("\\", "\\\\").replace("\"", "\\\"")
+        );
+
+        let mut child = Command::new("osascript")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("osascript spawn error: {}", e))?;
+
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(script.as_bytes())
+            .map_err(|e| format!("osascript write error: {}", e))?;
+
+        let output = child.wait_with_output().map_err(|e| format!("osascript error: {}", e))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("AppleScript error: {}", stderr));
+        }
+    }
+
+    println!("[save_caption] Finder comment set successfully");
+    Ok(())
 }

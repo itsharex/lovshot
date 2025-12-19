@@ -34,6 +34,14 @@ export default function Selector() {
   const [originalWindowInfo, setOriginalWindowInfo] = useState<WindowInfo | null>(null);
   const [scrollCaptureEnabled, setScrollCaptureEnabled] = useState(false);
   const [screenSnapshot, setScreenSnapshot] = useState<string | null>(null);
+  const [captionEnabled, setCaptionEnabled] = useState(() => {
+    return localStorage.getItem("captionEnabled") === "true";
+  });
+
+  // Persist captionEnabled
+  useEffect(() => {
+    localStorage.setItem("captionEnabled", String(captionEnabled));
+  }, [captionEnabled]);
 
   const startPos = useRef({ x: 0, y: 0 });
   const startRect = useRef<SelectionRect | null>(null);
@@ -127,7 +135,7 @@ export default function Selector() {
       if (mode === "image") {
         await new Promise((r) => setTimeout(r, 50));
       }
-      await invoke("save_screenshot", { useCached: mode === "staticimage" });
+      await invoke("save_screenshot", { useCached: mode === "staticimage", captionMode: captionEnabled });
       await win.close();
     } else if (mode === "gif") {
       await invoke("start_recording");
@@ -368,6 +376,8 @@ export default function Selector() {
         setMode("scroll");
       } else if (e.key === "t" || e.key === "T") {
         setExcludeTitlebar((prev) => !prev);
+      } else if (e.key === "c" || e.key === "C") {
+        setCaptionEnabled((prev) => !prev);
       } else if (e.key === "Enter" && selectionRect) {
         await doCapture();
       }
@@ -514,6 +524,13 @@ export default function Selector() {
             data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
           >
             T
+          </button>
+          <button
+            className={`toolbar-btn has-tooltip ${captionEnabled ? "active" : ""}`}
+            onClick={() => setCaptionEnabled(!captionEnabled)}
+            data-tooltip="添加描述 (C) - 截图后输入说明文字"
+          >
+            C
           </button>
           <div className="toolbar-divider" />
           <button

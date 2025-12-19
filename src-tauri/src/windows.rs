@@ -239,3 +239,49 @@ pub fn open_about_window(app: AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Open the caption preview window (centered, with input for description)
+pub fn open_caption_window(app: &AppHandle, image_path: &str) -> Result<(), String> {
+    println!("[caption] Opening caption window for: {}", image_path);
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let ns_app: *mut objc::runtime::Object =
+                msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+        }
+    }
+
+    // Use unique label to avoid conflicts
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let window_label = format!("caption-{}", timestamp);
+
+    let win_w = 480.0;
+    let win_h = 400.0;
+
+    let url = format!("/preview.html?path={}&mode=caption", urlencoding::encode(image_path));
+    println!("[caption] URL: {}", url);
+
+    let win = WebviewWindowBuilder::new(app, &window_label, WebviewUrl::App(url.into()))
+        .title("添加描述")
+        .inner_size(win_w, win_h)
+        .min_inner_size(360.0, 300.0)
+        .resizable(true)
+        .center()
+        .focused(true)
+        .build()
+        .map_err(|e| {
+            println!("[caption] Failed to create window: {}", e);
+            e.to_string()
+        })?;
+
+    let _ = win.show();
+    let _ = win.set_focus();
+
+    Ok(())
+}
