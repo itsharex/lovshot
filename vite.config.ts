@@ -22,6 +22,7 @@ export default defineConfig(async () => ({
         settings: resolve(__dirname, "settings.html"),
         about: resolve(__dirname, "about.html"),
         permission: resolve(__dirname, "permission.html"),
+        preview: resolve(__dirname, "preview.html"),
       },
     },
   },

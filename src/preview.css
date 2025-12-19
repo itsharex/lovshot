@@ -1,0 +1,57 @@
+:root {
+  --background: #FFFFFF;
+  --foreground: #181818;
+  --muted: #F0EEE6;
+  --muted-foreground: #87867F;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: transparent;
+  overflow: hidden;
+}
+
+.preview-container {
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  cursor: pointer;
+  animation: slide-in 0.25s ease-out;
+}
+
+.preview-container img {
+  display: block;
+  width: 100%;
+  height: calc(100% - 36px);
+  object-fit: cover;
+}
+
+.preview-label {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -125,6 +125,7 @@ function App() {
       };
       setHistory((prev) => [placeholder, ...prev]);
       loadStats();
+
       // 延迟获取完整信息（等文件写入完成）
       setTimeout(async () => {
         try {
@@ -398,6 +399,7 @@ function App() {
           )}
         </div>
       )}
+
     </main>
   );
 }

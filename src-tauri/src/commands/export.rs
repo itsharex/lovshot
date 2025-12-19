@@ -308,6 +308,15 @@ pub fn save_screenshot(
     let path_str = filename.to_string_lossy().to_string();
     let _ = app.emit("screenshot-saved", &path_str);
 
+    // Show preview window if enabled
+    let cfg = crate::config::load_config();
+    println!("[save_screenshot] screenshot_preview_enabled: {}", cfg.screenshot_preview_enabled);
+    if cfg.screenshot_preview_enabled {
+        if let Err(e) = crate::windows::open_preview_window(&app, &path_str) {
+            println!("[save_screenshot] Failed to open preview: {}", e);
+        }
+    }
+
     Ok(path_str)
 }
 

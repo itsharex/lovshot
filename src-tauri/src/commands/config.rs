@@ -84,6 +84,14 @@ pub fn set_scroll_capture_enabled(app: AppHandle, enabled: bool) -> Result<AppCo
 }
 
 #[tauri::command]
+pub fn set_screenshot_preview_enabled(enabled: bool) -> Result<AppConfig, String> {
+    let mut cfg = config::load_config();
+    cfg.screenshot_preview_enabled = enabled;
+    config::save_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
 pub fn pause_shortcuts(app: AppHandle, state: tauri::State<SharedState>) -> Result<(), String> {
     {
         let mut s = state.lock().unwrap();

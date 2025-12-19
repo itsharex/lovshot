@@ -52,6 +52,12 @@ pub struct AppConfig {
     pub autostart_enabled: bool,
     #[serde(default)]
     pub scroll_capture_enabled: bool,
+    #[serde(default = "default_screenshot_preview")]
+    pub screenshot_preview_enabled: bool,
+}
+
+fn default_screenshot_preview() -> bool {
+    true
 }
 
 /// Old config format for migration
@@ -65,6 +71,8 @@ struct OldAppConfig {
     pub autostart_enabled: bool,
     #[serde(default)]
     pub scroll_capture_enabled: bool,
+    #[serde(default = "default_screenshot_preview")]
+    pub screenshot_preview_enabled: bool,
 }
 
 impl From<OldAppConfig> for AppConfig {
@@ -80,6 +88,7 @@ impl From<OldAppConfig> for AppConfig {
             developer_mode: old.developer_mode,
             autostart_enabled: old.autostart_enabled,
             scroll_capture_enabled: old.scroll_capture_enabled,
+            screenshot_preview_enabled: old.screenshot_preview_enabled,
         }
     }
 }
@@ -174,6 +183,7 @@ impl Default for AppConfig {
             developer_mode: false,
             autostart_enabled: true,
             scroll_capture_enabled: false,
+            screenshot_preview_enabled: true,
         }
     }
 }

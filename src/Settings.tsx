@@ -15,6 +15,7 @@ interface AppConfig {
   developer_mode: boolean;
   autostart_enabled: boolean;
   scroll_capture_enabled: boolean;
+  screenshot_preview_enabled: boolean;
 }
 
 type EditingState = {
@@ -231,6 +232,18 @@ export default function Settings() {
     }
   }, [config]);
 
+  const handleToggleScreenshotPreview = useCallback(async () => {
+    if (!config) return;
+    try {
+      const newConfig = await invoke<AppConfig>("set_screenshot_preview_enabled", {
+        enabled: !config.screenshot_preview_enabled,
+      });
+      setConfig(newConfig);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [config]);
+
   const handleClose = useCallback(async () => {
     await getCurrentWindow().close();
   }, []);
@@ -342,13 +355,24 @@ export default function Settings() {
           <AccordionTrigger>General</AccordionTrigger>
           <AccordionContent>
             <div className="settings-card">
-              <div className="setting-row">
+              <div className="setting-row has-border">
                 <span className="setting-label">Launch at Login</span>
                 <button
                   role="switch"
                   aria-checked={config.autostart_enabled}
                   className={`switch ${config.autostart_enabled ? "switch-on" : ""}`}
                   onClick={handleToggleAutostart}
+                >
+                  <span className="switch-thumb" />
+                </button>
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">Screenshot Preview</span>
+                <button
+                  role="switch"
+                  aria-checked={config.screenshot_preview_enabled}
+                  className={`switch ${config.screenshot_preview_enabled ? "switch-on" : ""}`}
+                  onClick={handleToggleScreenshotPreview}
                 >
                   <span className="switch-thumb" />
                 </button>

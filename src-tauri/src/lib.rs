@@ -173,6 +173,7 @@ pub fn run() {
             commands::resume_shortcuts,
             commands::set_developer_mode,
             commands::set_scroll_capture_enabled,
+            commands::set_screenshot_preview_enabled,
             commands::start_recording,
             commands::stop_recording,
             commands::get_recording_info,

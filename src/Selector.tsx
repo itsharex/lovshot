@@ -473,60 +473,60 @@ export default function Selector() {
       {showToolbar && (
         <div id="toolbar" className="toolbar" style={toolbarStyle}>
           <button
-            className={`toolbar-btn ${mode === "image" || mode === "staticimage" ? "active" : ""}`}
+            className={`toolbar-btn has-tooltip ${mode === "image" || mode === "staticimage" ? "active" : ""}`}
             onClick={isStaticMode ? undefined : () => setMode("image")}
             disabled={isStaticMode}
             style={isStaticMode ? { cursor: "default" } : undefined}
-            title={isStaticMode ? "Static Screenshot" : "Screenshot (S)"}
+            data-tooltip={isStaticMode ? "静态截图模式" : "截图 (S) - 按 Shift 切换静态/动态"}
           >
             S
           </button>
           <button
-            className={`toolbar-btn ${mode === "gif" ? "active" : ""}`}
+            className={`toolbar-btn has-tooltip ${mode === "gif" ? "active" : ""}`}
             onClick={isStaticMode ? undefined : () => setMode("gif")}
             disabled={isStaticMode}
             style={isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={isStaticMode ? "Not available in static mode" : "Record GIF (G)"}
+            data-tooltip={isStaticMode ? "静态模式下不可用" : "录制 GIF (G) - 选区内录制动画"}
           >
             G
           </button>
           <button
-            className={`toolbar-btn ${mode === "scroll" ? "active" : ""}`}
+            className={`toolbar-btn has-tooltip ${mode === "scroll" ? "active" : ""}`}
             onClick={scrollCaptureEnabled && !isStaticMode ? () => setMode("scroll") : undefined}
             disabled={!scrollCaptureEnabled || isStaticMode}
             style={!scrollCaptureEnabled || isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={isStaticMode ? "Not available in static mode" : scrollCaptureEnabled ? "Scroll Capture (L)" : "Scroll Capture (L) - Enable in Settings"}
+            data-tooltip={isStaticMode ? "静态模式下不可用" : scrollCaptureEnabled ? "滚动截图 (L) - 自动拼接长图" : "滚动截图 (L) - 需在设置中启用"}
           >
             L
           </button>
           <button
-            className="toolbar-btn"
+            className="toolbar-btn has-tooltip"
             disabled
             style={{ opacity: 0.4, cursor: "not-allowed" }}
-            title="Record Video (V)"
+            data-tooltip="录制视频 (V) - 即将推出"
           >
             V
           </button>
           <div className="toolbar-divider" />
           <button
-            className={`toolbar-btn ${excludeTitlebar ? "active" : ""}`}
+            className={`toolbar-btn has-tooltip ${excludeTitlebar ? "active" : ""}`}
             onClick={() => setExcludeTitlebar(!excludeTitlebar)}
-            title={`Exclude Titlebar (T) - ${currentTitlebarHeight}px`}
+            data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
           >
             T
           </button>
           <div className="toolbar-divider" />
           <button
-            className="toolbar-btn"
+            className="toolbar-btn has-tooltip"
             onClick={(e) => {
               e.stopPropagation();
               doCapture();
             }}
-            title="Confirm (Enter)"
+            data-tooltip="确认 (Enter)"
           >
-            OK
+            ✓
           </button>
-          <button className="toolbar-btn" onClick={closeWindow} title="Cancel (ESC)">
+          <button className="toolbar-btn has-tooltip" onClick={closeWindow} data-tooltip="取消 (ESC)">
             X
           </button>
         </div>
