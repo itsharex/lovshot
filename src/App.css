@@ -1478,3 +1478,114 @@ button:hover {
     transform: translateY(0);
   }
 }
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  min-width: 160px;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.context-menu button:hover {
+  background: var(--muted);
+}
+
+.context-menu button.danger {
+  color: #dc3545;
+}
+
+.context-menu button.danger:hover {
+  background: rgba(220, 53, 69, 0.1);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Multi-select style */
+.history-item.multi-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.context-menu-header {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+/* Select checkbox for multi-select mode */
+.select-checkbox {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.select-checkbox.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.select-checkbox.checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Drag selection box */
+.selection-box {
+  position: fixed;
+  border: 2px solid var(--primary);
+  background: rgba(204, 120, 92, 0.2);
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 4px;
+}
+
+.history-scroll {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.history-item img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}

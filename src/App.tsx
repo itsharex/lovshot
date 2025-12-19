@@ -66,8 +66,25 @@ function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
   const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [isWideScreen, setIsWideScreen] = useState(window.innerWidth >= 700);
   const loaderRef = useRef<HTMLDivElement>(null);
+  const didDragRef = useRef(false); // Track if a valid drag occurred
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: HistoryItem[];
+  } | null>(null);
+
+  // Drag selection state
+  const [dragSelect, setDragSelect] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
 
   // Track screen width for gallery layout
   useEffect(() => {
@@ -262,12 +279,115 @@ function App() {
     return () => observer.disconnect();
   }, [hasMore, loading, loadHistory]);
 
-  const handleItemClick = (item: HistoryItem) => {
+  const handleItemClick = (e: React.MouseEvent, item: HistoryItem) => {
+    // Skip if we just did a drag selection
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+    // In multi-select mode or with Cmd/Ctrl, toggle selection
+    if (selectedPaths.size > 0 || e.metaKey || e.ctrlKey) {
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.path)) {
+          next.delete(item.path);
+        } else {
+          next.add(item.path);
+        }
+        return next;
+      });
+      return;
+    }
+    // Normal click
     if (isWideScreen) {
       setSelected(item);
     } else {
       invoke("open_file", { path: item.path });
     }
+  };
+
+  // ESC to exit multi-select mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedPaths.size > 0) {
+        setSelectedPaths(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedPaths.size]);
+
+  // Drag selection - start on any mousedown
+  const handleDragStart = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    didDragRef.current = false;
+    setDragSelect({
+      startX: e.clientX,
+      startY: e.clientY,
+      currentX: e.clientX,
+      currentY: e.clientY,
+    });
+  };
+
+  // Global mouse events for drag selection
+  useEffect(() => {
+    if (!dragSelect) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setDragSelect((prev) =>
+        prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null
+      );
+    };
+
+    const handleMouseUp = () => {
+      setDragSelect((current) => {
+        if (!current) return null;
+        // Calculate selection box
+        const left = Math.min(current.startX, current.currentX);
+        const right = Math.max(current.startX, current.currentX);
+        const top = Math.min(current.startY, current.currentY);
+        const bottom = Math.max(current.startY, current.currentY);
+        const boxWidth = right - left;
+        const boxHeight = bottom - top;
+
+        // Only select if dragged more than 10px
+        if (boxWidth > 10 || boxHeight > 10) {
+          didDragRef.current = true; // Mark that we did a valid drag
+          const items = document.querySelectorAll(".history-item[data-path]");
+          const newSelected = new Set(selectedPaths);
+          items.forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            const intersects =
+              rect.left < right && rect.right > left && rect.top < bottom && rect.bottom > top;
+            if (intersects) {
+              const path = (el as HTMLElement).dataset.path;
+              if (path) newSelected.add(path);
+            }
+          });
+          setSelectedPaths(newSelected);
+        }
+        return null;
+      });
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [dragSelect, selectedPaths]);
+
+  // Get selection box style - only show if dragged enough
+  const getSelectionBoxStyle = (): React.CSSProperties | null => {
+    if (!dragSelect) return null;
+    const width = Math.abs(dragSelect.currentX - dragSelect.startX);
+    const height = Math.abs(dragSelect.currentY - dragSelect.startY);
+    // Only show if dragged more than 10px
+    if (width <= 10 && height <= 10) return null;
+    const left = Math.min(dragSelect.startX, dragSelect.currentX);
+    const top = Math.min(dragSelect.startY, dragSelect.currentY);
+    return { left, top, width, height };
   };
 
   const handleOpenExternal = () => {
@@ -281,6 +401,79 @@ function App() {
       invoke("reveal_in_folder", { path: selected.path });
     }
   };
+
+  // Context menu handlers
+  const handleContextMenu = (e: React.MouseEvent, item: HistoryItem) => {
+    e.preventDefault();
+    if (item.isLoading) return;
+    // If right-clicked item is in selection, use all selected; otherwise just this one
+    if (selectedPaths.has(item.path)) {
+      const items = history.filter((h) => selectedPaths.has(h.path));
+      setContextMenu({ x: e.clientX, y: e.clientY, items });
+    } else {
+      setContextMenu({ x: e.clientX, y: e.clientY, items: [item] });
+    }
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const handleMenuReveal = () => {
+    if (contextMenu && contextMenu.items.length > 0) {
+      // Reveal first item
+      invoke("reveal_in_folder", { path: contextMenu.items[0].path });
+      closeContextMenu();
+    }
+  };
+
+  const handleMenuEditCaption = () => {
+    if (contextMenu && contextMenu.items.length === 1) {
+      invoke("open_caption_editor", { path: contextMenu.items[0].path });
+      closeContextMenu();
+    }
+  };
+
+  const handleMenuToggleSelect = () => {
+    if (!contextMenu || contextMenu.items.length !== 1) return;
+    const path = contextMenu.items[0].path;
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+    closeContextMenu();
+  };
+
+  const handleMenuDelete = async () => {
+    if (!contextMenu) return;
+    const { items } = contextMenu;
+    const paths = items.map((i) => i.path);
+    closeContextMenu();
+    try {
+      // Delete all selected
+      await Promise.all(paths.map((p) => invoke("delete_file", { path: p })));
+      // Remove from list
+      const pathSet = new Set(paths);
+      setHistory((prev) => prev.filter((h) => !pathSet.has(h.path)));
+      setSelectedPaths(new Set());
+      if (selected && pathSet.has(selected.path)) setSelected(null);
+      loadStats();
+    } catch (e) {
+      console.error("删除失败:", e);
+    }
+  };
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => closeContextMenu();
+    if (contextMenu) {
+      window.addEventListener("click", handleClick);
+      return () => window.removeEventListener("click", handleClick);
+    }
+  }, [contextMenu]);
 
   return (
     <main className={`dashboard ${isWideScreen ? "gallery-mode" : ""}`}>
@@ -341,7 +534,7 @@ function App() {
             </div>
           </div>
 
-          <div className="history-scroll">
+          <div className="history-scroll" onMouseDown={handleDragStart}>
             {history.length === 0 && !loading ? (
               <div className="empty-state">
                 <span className="empty-icon">📷</span>
@@ -353,15 +546,11 @@ function App() {
                 {history.map((item) => (
                   <div
                     key={item.path}
-                    className={`history-item ${selected?.path === item.path ? "selected" : ""} ${item.isLoading ? "loading" : ""} ${item.description ? "has-description" : ""}`}
-                    onClick={() => !item.isLoading && handleItemClick(item)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      if (!item.isLoading) {
-                        invoke("reveal_in_folder", { path: item.path });
-                      }
-                    }}
-                    title={isWideScreen ? item.filename : `${item.filename}\n${formatSize(item.size)}\n右键在 Finder 中显示`}
+                    data-path={item.path}
+                    className={`history-item ${selected?.path === item.path ? "selected" : ""} ${selectedPaths.has(item.path) ? "multi-selected" : ""} ${item.isLoading ? "loading" : ""} ${item.description ? "has-description" : ""}`}
+                    onClick={(e) => !item.isLoading && handleItemClick(e, item)}
+                    onContextMenu={(e) => handleContextMenu(e, item)}
+                    title={isWideScreen ? item.filename : `${item.filename}\n${formatSize(item.size)}\n拖动框选`}
                   >
                     {item.isLoading ? (
                       <div className="history-thumb-loading">
@@ -373,6 +562,9 @@ function App() {
                     <span className={`history-badge history-badge-${item.file_type}`}>
                       {item.file_type === "gif" ? "GIF" : "IMG"}
                     </span>
+                    {selectedPaths.size > 0 && (
+                      <span className={`select-checkbox ${selectedPaths.has(item.path) ? "checked" : ""}`} />
+                    )}
                     {item.description && (
                       <div className="history-description">{item.description}</div>
                     )}
@@ -432,6 +624,37 @@ function App() {
         </div>
       )}
 
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.items.length > 1 && (
+            <div className="context-menu-header">已选择 {contextMenu.items.length} 项</div>
+          )}
+          {contextMenu.items.length === 1 && (
+            <button onClick={handleMenuToggleSelect}>
+              {selectedPaths.has(contextMenu.items[0].path) ? "取消选择" : "选择"}
+            </button>
+          )}
+          <button onClick={handleMenuReveal}>在 Finder 中显示</button>
+          {contextMenu.items.length === 1 && (
+            <button onClick={handleMenuEditCaption}>编辑描述</button>
+          )}
+          <div className="context-menu-divider" />
+          <button className="danger" onClick={handleMenuDelete}>
+            删除{contextMenu.items.length > 1 ? ` (${contextMenu.items.length})` : ""}
+          </button>
+        </div>
+      )}
+
+      {/* Drag selection box */}
+      {(() => {
+        const style = getSelectionBoxStyle();
+        return style && <div className="selection-box" style={style} />;
+      })()}
     </main>
   );
 }

@@ -991,3 +991,16 @@ tell application "Finder" to get comment of theFile"#,
 fn read_finder_comment(_path: &str) -> Option<String> {
     None
 }
+
+#[tauri::command]
+pub fn delete_file(path: String) -> Result<(), String> {
+    // Move to trash instead of permanent delete
+    trash::delete(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
+    println!("[delete_file] Moved to trash: {}", path);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_caption_editor(app: AppHandle, path: String) -> Result<(), String> {
+    crate::windows::open_caption_window(&app, &path)
+}
