@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/Accordion";
 
 interface ShortcutConfig {
   modifiers: string[];
@@ -253,148 +254,152 @@ export default function Settings() {
 
   return (
     <div className="settings-container" ref={containerRef} tabIndex={-1}>
-      <section className="settings-section">
-        <h2 className="section-title">Shortcuts</h2>
-        <div className="settings-card">
-          {actions.map((action, actionIndex) => {
-            const shortcuts = config.shortcuts[action] || [];
-            const isEditingThisAction = editing?.action === action;
-            const isAdding = isEditingThisAction && editing?.index === -1;
-            const isDisabled = action === "scroll" && !config.scroll_capture_enabled;
+      <Accordion type="multiple" defaultValue={["shortcuts", "general", "advanced"]}>
+        <AccordionItem value="shortcuts">
+          <AccordionTrigger>Shortcuts</AccordionTrigger>
+          <AccordionContent>
+            <div className="settings-card">
+              {actions.map((action, actionIndex) => {
+                const shortcuts = config.shortcuts[action] || [];
+                const isEditingThisAction = editing?.action === action;
+                const isAdding = isEditingThisAction && editing?.index === -1;
+                const isDisabled = action === "scroll" && !config.scroll_capture_enabled;
 
-            return (
-              <div
-                key={action}
-                className={`setting-row ${actionIndex < actions.length - 1 ? "has-border" : ""} ${isDisabled ? "disabled" : ""}`}
-                data-tooltip={isDisabled ? "Enable Scroll Capture (Preview) in Advanced settings first" : undefined}
-              >
-                <span className="setting-label">{ACTION_LABELS[action]}</span>
-                <div className="setting-control">
-                  {/* Show existing shortcuts as tags */}
-                  {shortcuts.map((cfg, idx) => {
-                    const isEditingThis = isEditingThisAction && editing?.index === idx;
+                return (
+                  <div
+                    key={action}
+                    className={`setting-row ${actionIndex < actions.length - 1 ? "has-border" : ""} ${isDisabled ? "disabled" : ""}`}
+                    data-tooltip={isDisabled ? "Enable Scroll Capture (Preview) in Advanced settings first" : undefined}
+                  >
+                    <span className="setting-label">{ACTION_LABELS[action]}</span>
+                    <div className="setting-control">
+                      {shortcuts.map((cfg, idx) => {
+                        const isEditingThis = isEditingThisAction && editing?.index === idx;
 
-                    if (isEditingThis) {
-                      const pendingDisplay = pendingShortcut
-                        ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
-                        : null;
-                      return (
-                        <span key={idx} className={`shortcut-key ${pendingDisplay ? "captured" : "recording"}`}>
-                          {pendingDisplay || "Press..."}
-                        </span>
-                      );
-                    }
+                        if (isEditingThis) {
+                          const pendingDisplay = pendingShortcut
+                            ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
+                            : null;
+                          return (
+                            <span key={idx} className={`shortcut-key ${pendingDisplay ? "captured" : "recording"}`}>
+                              {pendingDisplay || "Press..."}
+                            </span>
+                          );
+                        }
 
-                    return (
-                      <span
-                        key={idx}
-                        className={`shortcut-key ${isDisabled ? "" : "clickable"}`}
-                        onClick={isDisabled ? undefined : () => startEditing(action, idx)}
-                        title={isDisabled ? undefined : "Click to edit"}
-                      >
-                        {formatShortcut(cfg)}
-                        {shortcuts.length > 1 && !isDisabled && (
+                        return (
                           <span
-                            className="shortcut-remove"
-                            onClick={(e) => { e.stopPropagation(); handleRemove(action, idx); }}
-                            title="Remove"
+                            key={idx}
+                            className={`shortcut-key ${isDisabled ? "" : "clickable"}`}
+                            onClick={isDisabled ? undefined : () => startEditing(action, idx)}
+                            title={isDisabled ? undefined : "Click to edit"}
                           >
-                            ×
+                            {formatShortcut(cfg)}
+                            {shortcuts.length > 1 && !isDisabled && (
+                              <span
+                                className="shortcut-remove"
+                                onClick={(e) => { e.stopPropagation(); handleRemove(action, idx); }}
+                                title="Remove"
+                              >
+                                ×
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                    );
-                  })}
+                        );
+                      })}
 
-                  {/* Adding new shortcut */}
-                  {isAdding && (
-                    <span className={`shortcut-key ${pendingShortcut ? "captured" : "recording"}`}>
-                      {pendingShortcut
-                        ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
-                        : "Press..."}
-                    </span>
-                  )}
+                      {isAdding && (
+                        <span className={`shortcut-key ${pendingShortcut ? "captured" : "recording"}`}>
+                          {pendingShortcut
+                            ? formatShortcut({ modifiers: pendingShortcut.modifiers, key: pendingShortcut.key, enabled: true })
+                            : "Press..."}
+                        </span>
+                      )}
 
-                  {/* Empty state */}
-                  {shortcuts.length === 0 && !isAdding && (
-                    <span className="shortcut-key text-muted">Not set</span>
-                  )}
+                      {shortcuts.length === 0 && !isAdding && (
+                        <span className="shortcut-key text-muted">Not set</span>
+                      )}
 
-                  {/* Action buttons */}
-                  {isEditingThisAction ? (
-                    <>
-                      <button className="btn-small" onClick={handleSave} disabled={!pendingShortcut}>
-                        Save
-                      </button>
-                      <button className="btn-small btn-secondary" onClick={handleCancel}>
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="btn-icon"
-                      onClick={() => startEditing(action, -1)}
-                      title={isDisabled ? undefined : "Add shortcut"}
-                      disabled={isDisabled}
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {debugInfo && <div className="debug-info">{debugInfo}</div>}
-        {error && <div className="error-message">{error}</div>}
-      </section>
-
-      <section className="settings-section">
-        <h2 className="section-title">General</h2>
-        <div className="settings-card">
-          <div className="setting-row">
-            <span className="setting-label">Launch at Login</span>
-            <button
-              role="switch"
-              aria-checked={config.autostart_enabled}
-              className={`switch ${config.autostart_enabled ? "switch-on" : ""}`}
-              onClick={handleToggleAutostart}
-            >
-              <span className="switch-thumb" />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="settings-section">
-        <h2 className="section-title">Advanced</h2>
-        <div className="settings-card">
-          <div className={`setting-row ${config.developer_mode ? "has-border" : ""}`}>
-            <span className="setting-label">Developer Mode</span>
-            <button
-              role="switch"
-              aria-checked={config.developer_mode}
-              className={`switch ${config.developer_mode ? "switch-on" : ""}`}
-              onClick={handleToggleDeveloperMode}
-            >
-              <span className="switch-thumb" />
-            </button>
-          </div>
-          {config.developer_mode && (
-            <div className="setting-row">
-              <span className="setting-label">Scroll Capture (Preview)</span>
-              <button
-                role="switch"
-                aria-checked={config.scroll_capture_enabled}
-                className={`switch ${config.scroll_capture_enabled ? "switch-on" : ""}`}
-                onClick={handleToggleScrollCapture}
-              >
-                <span className="switch-thumb" />
-              </button>
+                      {isEditingThisAction ? (
+                        <>
+                          <button className="btn-small" onClick={handleSave} disabled={!pendingShortcut}>
+                            Save
+                          </button>
+                          <button className="btn-small btn-secondary" onClick={handleCancel}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn-icon"
+                          onClick={() => startEditing(action, -1)}
+                          title={isDisabled ? undefined : "Add shortcut"}
+                          disabled={isDisabled}
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </div>
-      </section>
+            {debugInfo && <div className="debug-info">{debugInfo}</div>}
+            {error && <div className="error-message">{error}</div>}
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="general">
+          <AccordionTrigger>General</AccordionTrigger>
+          <AccordionContent>
+            <div className="settings-card">
+              <div className="setting-row">
+                <span className="setting-label">Launch at Login</span>
+                <button
+                  role="switch"
+                  aria-checked={config.autostart_enabled}
+                  className={`switch ${config.autostart_enabled ? "switch-on" : ""}`}
+                  onClick={handleToggleAutostart}
+                >
+                  <span className="switch-thumb" />
+                </button>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="advanced">
+          <AccordionTrigger>Advanced</AccordionTrigger>
+          <AccordionContent>
+            <div className="settings-card">
+              <div className={`setting-row ${config.developer_mode ? "has-border" : ""}`}>
+                <span className="setting-label">Developer Mode</span>
+                <button
+                  role="switch"
+                  aria-checked={config.developer_mode}
+                  className={`switch ${config.developer_mode ? "switch-on" : ""}`}
+                  onClick={handleToggleDeveloperMode}
+                >
+                  <span className="switch-thumb" />
+                </button>
+              </div>
+              {config.developer_mode && (
+                <div className="setting-row">
+                  <span className="setting-label">Scroll Capture (Preview)</span>
+                  <button
+                    role="switch"
+                    aria-checked={config.scroll_capture_enabled}
+                    className={`switch ${config.scroll_capture_enabled ? "switch-on" : ""}`}
+                    onClick={handleToggleScrollCapture}
+                  >
+                    <span className="switch-thumb" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <div className="settings-actions">
         <button className="btn-secondary" onClick={handleReset}>

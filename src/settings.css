@@ -30,20 +30,6 @@
   height: 100vh;
 }
 
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.section-title {
-  font-size: 0.8125rem;
-  font-weight: 400;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding-left: 1rem;
-}
 
 .settings-card {
   background: var(--card);
