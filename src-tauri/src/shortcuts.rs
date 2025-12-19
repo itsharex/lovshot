@@ -160,6 +160,11 @@ pub fn register_shortcuts_from_config(app: &AppHandle) -> Result<(), String> {
             continue;
         }
 
+        // Skip scroll if not enabled (developer mode preview feature)
+        if action == "scroll" && !config.scroll_capture_enabled {
+            continue;
+        }
+
         for shortcut_cfg in shortcuts {
             if !shortcut_cfg.enabled {
                 continue;

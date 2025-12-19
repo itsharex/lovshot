@@ -56,7 +56,7 @@ pub fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error
         app,
         "scroll",
         "Scroll Capture",
-        cfg.developer_mode,
+        cfg.developer_mode && cfg.scroll_capture_enabled,
         Some(scroll_shortcut.as_str()),
     )?;
     let menu_video = MenuItem::with_id(

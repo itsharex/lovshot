@@ -32,6 +32,7 @@ export default function Selector() {
   const [excludeTitlebar, setExcludeTitlebar] = useState(false);
   const [currentTitlebarHeight, setCurrentTitlebarHeight] = useState(0);
   const [originalWindowInfo, setOriginalWindowInfo] = useState<WindowInfo | null>(null);
+  const [scrollCaptureEnabled, setScrollCaptureEnabled] = useState(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const startRect = useRef<SelectionRect | null>(null);
@@ -43,7 +44,7 @@ export default function Selector() {
     await getCurrentWindow().close();
   }, []);
 
-  // Fetch pending mode from backend on mount
+  // Fetch pending mode and config on mount
   useEffect(() => {
     invoke<Mode | null>("get_pending_mode").then((pendingMode) => {
       console.log("[Selector] get_pending_mode 返回:", pendingMode);
@@ -51,6 +52,10 @@ export default function Selector() {
         setMode(pendingMode);
         invoke("clear_pending_mode");
       }
+    });
+    // Check if scroll capture is enabled
+    invoke<{ scroll_capture_enabled: boolean }>("get_shortcuts_config").then((cfg) => {
+      setScrollCaptureEnabled(cfg.scroll_capture_enabled);
     });
   }, []);
 
@@ -329,7 +334,7 @@ export default function Selector() {
         setMode("image");
       } else if (e.key === "g" || e.key === "G") {
         setMode("gif");
-      } else if (e.key === "l" || e.key === "L") {
+      } else if ((e.key === "l" || e.key === "L") && scrollCaptureEnabled) {
         setMode("scroll");
       } else if (e.key === "t" || e.key === "T") {
         setExcludeTitlebar((prev) => !prev);
@@ -340,7 +345,7 @@ export default function Selector() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectionRect, doCapture, closeWindow]);
+  }, [selectionRect, doCapture, closeWindow, scrollCaptureEnabled]);
 
   const toolbarStyle: React.CSSProperties = selectionRect
     ? {
@@ -450,10 +455,11 @@ export default function Selector() {
             G
           </button>
           <button
-            className="toolbar-btn"
-            disabled
-            style={{ opacity: 0.4, cursor: "not-allowed" }}
-            title="Scroll Capture (L) - Coming Soon"
+            className={`toolbar-btn ${mode === "scroll" ? "active" : ""}`}
+            onClick={scrollCaptureEnabled ? () => setMode("scroll") : undefined}
+            disabled={!scrollCaptureEnabled}
+            style={scrollCaptureEnabled ? undefined : { opacity: 0.4, cursor: "not-allowed" }}
+            title={scrollCaptureEnabled ? "Scroll Capture (L)" : "Scroll Capture (L) - Enable in Settings"}
           >
             L
           </button>

@@ -13,6 +13,7 @@ interface AppConfig {
   shortcuts: Record<string, ShortcutConfig[]>;
   developer_mode: boolean;
   autostart_enabled: boolean;
+  scroll_capture_enabled: boolean;
 }
 
 type EditingState = {
@@ -226,6 +227,18 @@ export default function Settings() {
     }
   }, [config]);
 
+  const handleToggleScrollCapture = useCallback(async () => {
+    if (!config) return;
+    try {
+      const newConfig = await invoke<AppConfig>("set_scroll_capture_enabled", {
+        enabled: !config.scroll_capture_enabled,
+      });
+      setConfig(newConfig);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [config]);
+
   const handleClose = useCallback(async () => {
     await getCurrentWindow().close();
   }, []);
@@ -247,9 +260,14 @@ export default function Settings() {
             const shortcuts = config.shortcuts[action] || [];
             const isEditingThisAction = editing?.action === action;
             const isAdding = isEditingThisAction && editing?.index === -1;
+            const isDisabled = action === "scroll" && !config.scroll_capture_enabled;
 
             return (
-              <div key={action} className={`setting-row ${actionIndex < actions.length - 1 ? "has-border" : ""}`}>
+              <div
+                key={action}
+                className={`setting-row ${actionIndex < actions.length - 1 ? "has-border" : ""} ${isDisabled ? "disabled" : ""}`}
+                data-tooltip={isDisabled ? "Enable Scroll Capture (Preview) in Advanced settings first" : undefined}
+              >
                 <span className="setting-label">{ACTION_LABELS[action]}</span>
                 <div className="setting-control">
                   {/* Show existing shortcuts as tags */}
@@ -270,12 +288,12 @@ export default function Settings() {
                     return (
                       <span
                         key={idx}
-                        className="shortcut-key clickable"
-                        onClick={() => startEditing(action, idx)}
-                        title="Click to edit"
+                        className={`shortcut-key ${isDisabled ? "" : "clickable"}`}
+                        onClick={isDisabled ? undefined : () => startEditing(action, idx)}
+                        title={isDisabled ? undefined : "Click to edit"}
                       >
                         {formatShortcut(cfg)}
-                        {shortcuts.length > 1 && (
+                        {shortcuts.length > 1 && !isDisabled && (
                           <span
                             className="shortcut-remove"
                             onClick={(e) => { e.stopPropagation(); handleRemove(action, idx); }}
@@ -316,7 +334,8 @@ export default function Settings() {
                     <button
                       className="btn-icon"
                       onClick={() => startEditing(action, -1)}
-                      title="Add shortcut"
+                      title={isDisabled ? undefined : "Add shortcut"}
+                      disabled={isDisabled}
                     >
                       +
                     </button>
@@ -350,7 +369,7 @@ export default function Settings() {
       <section className="settings-section">
         <h2 className="section-title">Advanced</h2>
         <div className="settings-card">
-          <div className="setting-row">
+          <div className={`setting-row ${config.developer_mode ? "has-border" : ""}`}>
             <span className="setting-label">Developer Mode</span>
             <button
               role="switch"
@@ -361,6 +380,19 @@ export default function Settings() {
               <span className="switch-thumb" />
             </button>
           </div>
+          {config.developer_mode && (
+            <div className="setting-row">
+              <span className="setting-label">Scroll Capture (Preview)</span>
+              <button
+                role="switch"
+                aria-checked={config.scroll_capture_enabled}
+                className={`switch ${config.scroll_capture_enabled ? "switch-on" : ""}`}
+                onClick={handleToggleScrollCapture}
+              >
+                <span className="switch-thumb" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

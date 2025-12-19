@@ -50,6 +50,8 @@ pub struct AppConfig {
     pub developer_mode: bool,
     #[serde(default = "default_autostart")]
     pub autostart_enabled: bool,
+    #[serde(default)]
+    pub scroll_capture_enabled: bool,
 }
 
 /// Old config format for migration
@@ -61,6 +63,8 @@ struct OldAppConfig {
     pub developer_mode: bool,
     #[serde(default = "default_autostart")]
     pub autostart_enabled: bool,
+    #[serde(default)]
+    pub scroll_capture_enabled: bool,
 }
 
 impl From<OldAppConfig> for AppConfig {
@@ -75,6 +79,7 @@ impl From<OldAppConfig> for AppConfig {
             shortcuts,
             developer_mode: old.developer_mode,
             autostart_enabled: old.autostart_enabled,
+            scroll_capture_enabled: old.scroll_capture_enabled,
         }
     }
 }
@@ -148,6 +153,7 @@ impl Default for AppConfig {
             shortcuts,
             developer_mode: false,
             autostart_enabled: true,
+            scroll_capture_enabled: false,
         }
     }
 }

@@ -74,6 +74,16 @@ pub fn set_developer_mode(app: AppHandle, enabled: bool) -> Result<AppConfig, St
 }
 
 #[tauri::command]
+pub fn set_scroll_capture_enabled(app: AppHandle, enabled: bool) -> Result<AppConfig, String> {
+    let mut cfg = config::load_config();
+    cfg.scroll_capture_enabled = enabled;
+    config::save_config(&cfg)?;
+    register_shortcuts_from_config(&app)?;
+    update_tray_menu(&app);
+    Ok(cfg)
+}
+
+#[tauri::command]
 pub fn pause_shortcuts(app: AppHandle, state: tauri::State<SharedState>) -> Result<(), String> {
     {
         let mut s = state.lock().unwrap();
