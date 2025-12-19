@@ -5,7 +5,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use image::codecs::jpeg::JpegEncoder;
 use image::ExtendedColorType;
 use image::{DynamicImage, GenericImage, RgbaImage};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::fft_match::detect_scroll_delta_fft;
@@ -13,21 +13,14 @@ use crate::state::SharedState;
 use crate::tray::create_recording_overlay;
 use crate::types::{CropEdges, Region, ScrollCaptureProgress};
 
-/// Start scroll capture mode - captures the initial frame
-#[tauri::command]
-pub fn start_scroll_capture(
-    state: tauri::State<SharedState>,
-) -> Result<ScrollCaptureProgress, String> {
-    println!("[DEBUG][start_scroll_capture] ====== 被调用 ======");
+/// Internal function to capture initial scroll frame
+fn capture_initial_scroll_frame(
+    state: &SharedState,
+    region: &Region,
+) -> Result<(), String> {
+    println!("[DEBUG][capture_initial_scroll_frame] 开始捕获初始帧");
+
     let mut s = state.lock().unwrap();
-    let region = s.region.clone().ok_or_else(|| {
-        println!("[DEBUG][start_scroll_capture] 错误: No region selected");
-        "No region selected".to_string()
-    })?;
-    println!(
-        "[DEBUG][start_scroll_capture] region: x={}, y={}, w={}, h={}",
-        region.x, region.y, region.width, region.height
-    );
 
     // Clear previous scroll capture state
     s.scroll_frames.clear();
@@ -38,47 +31,62 @@ pub fn start_scroll_capture(
     drop(s);
 
     // Capture initial frame
-    println!("[DEBUG][start_scroll_capture] 开始截图...");
     let screens = Screen::all().map_err(|e| {
-        println!("[DEBUG][start_scroll_capture] Screen::all 错误: {}", e);
+        println!("[DEBUG][capture_initial_scroll_frame] Screen::all 错误: {}", e);
         e.to_string()
     })?;
     if screens.is_empty() {
-        println!("[DEBUG][start_scroll_capture] 错误: No screens found");
+        println!("[DEBUG][capture_initial_scroll_frame] 错误: No screens found");
         return Err("No screens found".to_string());
     }
-    println!(
-        "[DEBUG][start_scroll_capture] 找到 {} 个屏幕",
-        screens.len()
-    );
 
     let screen = &screens[0];
     let captured = screen
         .capture_area(region.x, region.y, region.width, region.height)
         .map_err(|e| {
-            println!("[DEBUG][start_scroll_capture] capture_area 错误: {}", e);
+            println!("[DEBUG][capture_initial_scroll_frame] capture_area 错误: {}", e);
             e.to_string()
         })?;
-    println!(
-        "[DEBUG][start_scroll_capture] 截图成功: {}x{}",
-        captured.width(),
-        captured.height()
-    );
 
     let frame = RgbaImage::from_raw(captured.width(), captured.height(), captured.into_raw())
         .ok_or("Failed to convert image")?;
-
-    let (_width, height) = frame.dimensions();
 
     // Store initial frame
     let mut s = state.lock().unwrap();
     s.scroll_frames.push(frame.clone());
     s.scroll_offsets.push(0);
-    s.scroll_stitched = Some(frame.clone());
+    s.scroll_stitched = Some(frame);
+
+    println!("[DEBUG][capture_initial_scroll_frame] 完成");
+    Ok(())
+}
+
+/// Start scroll capture mode - captures the initial frame
+#[tauri::command]
+pub fn start_scroll_capture(
+    state: tauri::State<SharedState>,
+) -> Result<ScrollCaptureProgress, String> {
+    println!("[DEBUG][start_scroll_capture] ====== 被调用 ======");
+    let region = {
+        let s = state.lock().unwrap();
+        s.region.clone().ok_or_else(|| {
+            println!("[DEBUG][start_scroll_capture] 错误: No region selected");
+            "No region selected".to_string()
+        })?
+    };
+    println!(
+        "[DEBUG][start_scroll_capture] region: x={}, y={}, w={}, h={}",
+        region.x, region.y, region.width, region.height
+    );
+
+    capture_initial_scroll_frame(state.inner(), &region)?;
 
     // Generate preview
-    println!("[DEBUG][start_scroll_capture] 生成预览...");
-    let preview = generate_preview_base64(&frame, 600)?;
+    let s = state.lock().unwrap();
+    let frame = s.scroll_stitched.as_ref().ok_or("No frame captured")?;
+    let (_width, height) = frame.dimensions();
+    let preview = generate_preview_base64(frame, 600)?;
+
     println!(
         "[DEBUG][start_scroll_capture] 完成! frame_count=1, height={}",
         height
@@ -401,7 +409,8 @@ fn generate_preview_base64(img: &RgbaImage, max_height: u32) -> Result<String, S
     let rgb_preview = DynamicImage::ImageRgba8(preview).to_rgb8();
 
     let mut jpg_data = Vec::new();
-    let mut encoder = JpegEncoder::new_with_quality(&mut jpg_data, 90);
+    // Use quality 75 instead of 90 for faster encoding with minimal visual difference
+    let mut encoder = JpegEncoder::new_with_quality(&mut jpg_data, 75);
     encoder
         .encode(
             rgb_preview.as_raw(),
@@ -461,10 +470,12 @@ pub fn open_scroll_overlay(
         s.region = Some(region.clone());
     }
 
-    // Show region indicator overlay (reuse recording overlay window in static mode)
+    // Show region indicator overlay FIRST (reuse recording overlay window in static mode)
+    // This ensures the selection border appears immediately
     create_recording_overlay(&app, &region, true);
 
     // Build window WITHOUT focus - critical for scroll events to pass through
+    // Create window BEFORE capturing to reduce perceived latency
     let win = WebviewWindowBuilder::new(
         &app,
         "scroll-overlay",
@@ -483,6 +494,32 @@ pub fn open_scroll_overlay(
     .map_err(|e| e.to_string())?;
 
     win.show().map_err(|e| e.to_string())?;
+
+    // Capture initial frame in background thread and emit when ready
+    let state_clone = state.inner().clone();
+    let app_clone = app.clone();
+    let region_clone = region.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = capture_initial_scroll_frame(&state_clone, &region_clone) {
+            eprintln!("[ERROR] Failed to capture initial scroll frame: {}", e);
+            return;
+        }
+
+        // Emit preview data
+        let s = state_clone.lock().unwrap();
+        if let Some(ref stitched) = s.scroll_stitched {
+            if let Ok(preview) = generate_preview_base64(stitched, 600) {
+                let _ = app_clone.emit(
+                    "scroll-preview-update",
+                    ScrollCaptureProgress {
+                        frame_count: s.scroll_frames.len(),
+                        total_height: stitched.height(),
+                        preview_base64: preview,
+                    },
+                );
+            }
+        }
+    });
 
     // Set window as non-activating panel on macOS
     #[cfg(target_os = "macos")]

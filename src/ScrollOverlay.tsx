@@ -28,6 +28,14 @@ export default function ScrollOverlay() {
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<Edge | null>(null);
 
+  // Listen for instant initial preview data pushed from backend
+  useEffect(() => {
+    const unlisten = listen<ScrollCaptureProgress>("scroll-preview-update", (event) => {
+      setProgress(event.payload);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
   // Poll for scroll changes
   useEffect(() => {
     if (isStopped) return;
@@ -48,13 +56,16 @@ export default function ScrollOverlay() {
       }
     };
 
-    invoke<ScrollCaptureProgress>("get_scroll_preview")
-      .then(setProgress)
-      .catch(() => {});
+    // Fallback: fetch initial data if not received via event
+    if (!progress) {
+      invoke<ScrollCaptureProgress>("get_scroll_preview")
+        .then(setProgress)
+        .catch(() => {});
+    }
 
     const intervalId = setInterval(pollCapture, POLL_INTERVAL);
     return () => clearInterval(intervalId);
-  }, [isStopped]);
+  }, [isStopped, progress]);
 
   // Listen for shortcut to stop
   useEffect(() => {
