@@ -135,13 +135,37 @@ body,
 .toolbar {
   position: absolute;
   display: flex;
-  gap: 6px;
+  align-items: stretch;
+  gap: 8px;
   background: var(--card);
   border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: 12px;
+  padding: 8px 12px;
+  border-radius: 14px;
   z-index: 100;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.toolbar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-section-title {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.toolbar-section-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .toolbar-btn {
@@ -171,9 +195,9 @@ body,
 
 .toolbar-divider {
   width: 1px;
-  height: 20px;
   background: var(--border);
-  align-self: center;
+  align-self: stretch;
+  margin: 4px 0;
 }
 
 .toolbar-select {
@@ -421,4 +445,97 @@ kbd {
 .toolbar-btn.has-tooltip:hover::after {
   opacity: 1;
   visibility: visible;
+}
+
+/* Annotation Toolbar Styles */
+.toolbar-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tool-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  display: flex;
+  gap: 4px;
+}
+
+.dropdown-item {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.dropdown-item:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.dropdown-item.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.color-picker {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.color-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.color-dot:hover {
+  transform: scale(1.1);
+}
+
+.color-dot.active {
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+/* Annotation Canvas */
+.annotation-canvas {
+  position: fixed;
+  z-index: 15;
+  pointer-events: auto;
+}
+
+/* Text input overlay for annotation */
+.annotation-text-input {
+  position: fixed;
+  z-index: 300;
+  background: transparent;
+  border: 2px solid var(--primary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: Inter, system-ui, sans-serif;
+  outline: none;
+  resize: none;
+  min-width: 100px;
+  min-height: 24px;
 }

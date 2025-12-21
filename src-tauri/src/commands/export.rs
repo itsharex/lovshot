@@ -1007,3 +1007,137 @@ pub fn copy_image_to_clipboard(app: AppHandle, path: String) -> Result<(), Strin
     app.clipboard().write_image(&tauri_image).map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
     Ok(())
 }
+
+/// Capture a region and return base64 PNG for annotation editing
+#[tauri::command(rename_all = "camelCase")]
+pub fn capture_region_preview(
+    state: tauri::State<SharedState>,
+    region: crate::types::Region,
+) -> Result<String, String> {
+    println!("[capture_region_preview] region: x={}, y={}, w={}, h={}",
+        region.x, region.y, region.width, region.height);
+
+    let s = state.lock().unwrap();
+    let cached_snapshot = s.cached_snapshot.clone();
+    let screen_scale = s.screen_scale;
+    let screen_x = s.screen_x;
+    let screen_y = s.screen_y;
+    drop(s);
+
+    // Try to use cached snapshot first (for static mode)
+    let captured_rgba = if let Some(ref snapshot) = cached_snapshot {
+        println!("[capture_region_preview] Using cached snapshot");
+        // Convert logical pixels to physical pixels
+        let rel_x = ((region.x - screen_x) as f32 * screen_scale).max(0.0) as u32;
+        let rel_y = ((region.y - screen_y) as f32 * screen_scale).max(0.0) as u32;
+        let phys_w = (region.width as f32 * screen_scale) as u32;
+        let phys_h = (region.height as f32 * screen_scale) as u32;
+
+        let max_x = snapshot.width().saturating_sub(1);
+        let max_y = snapshot.height().saturating_sub(1);
+        let crop_x = rel_x.min(max_x);
+        let crop_y = rel_y.min(max_y);
+        let crop_w = phys_w.min(snapshot.width().saturating_sub(crop_x));
+        let crop_h = phys_h.min(snapshot.height().saturating_sub(crop_y));
+
+        if crop_w == 0 || crop_h == 0 {
+            return Err("Invalid capture area".to_string());
+        }
+
+        image::imageops::crop_imm(snapshot, crop_x, crop_y, crop_w, crop_h).to_image()
+    } else {
+        // Capture live screen
+        println!("[capture_region_preview] Capturing live screen");
+        let screens = Screen::all().map_err(|e| e.to_string())?;
+        if screens.is_empty() {
+            return Err("No screens found".to_string());
+        }
+
+        let screen = &screens[0];
+        let captured = screen
+            .capture_area(region.x, region.y, region.width, region.height)
+            .map_err(|e| e.to_string())?;
+
+        RgbaImage::from_raw(captured.width(), captured.height(), captured.into_raw())
+            .ok_or("Failed to convert image")?
+    };
+
+    // Encode to PNG base64
+    use image::ImageEncoder;
+    let mut png_data = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
+    encoder.write_image(
+        captured_rgba.as_raw(),
+        captured_rgba.width(),
+        captured_rgba.height(),
+        image::ExtendedColorType::Rgba8,
+    ).map_err(|e| e.to_string())?;
+
+    let base64_str = STANDARD.encode(&png_data);
+    Ok(format!("data:image/png;base64,{}", base64_str))
+}
+
+/// Save an annotated screenshot from base64 PNG data
+#[tauri::command(rename_all = "camelCase")]
+pub fn save_annotated_screenshot(
+    app: AppHandle,
+    image_data: String,
+    caption_mode: Option<bool>,
+) -> Result<String, String> {
+    println!("[save_annotated_screenshot] Saving annotated screenshot, caption_mode={:?}", caption_mode);
+
+    // Decode base64
+    let decoded = STANDARD.decode(&image_data)
+        .map_err(|e| format!("Base64 decode error: {}", e))?;
+
+    // Load as image
+    let img = image::load_from_memory(&decoded)
+        .map_err(|e| format!("Image load error: {}", e))?
+        .to_rgba8();
+
+    println!("[save_annotated_screenshot] Image size: {}x{}", img.width(), img.height());
+
+    // Copy to clipboard
+    let tauri_image = tauri::image::Image::new_owned(
+        img.as_raw().to_vec(),
+        img.width(),
+        img.height()
+    );
+    app.clipboard().write_image(&tauri_image)
+        .map_err(|e| format!("Clipboard error: {}", e))?;
+    println!("[save_annotated_screenshot] Copied to clipboard");
+
+    // Save to file
+    let output_dir = dirs::picture_dir()
+        .or_else(|| dirs::home_dir())
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovshot");
+
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let filename = output_dir.join(format!("screenshot_{}.png", timestamp));
+
+    img.save(&filename).map_err(|e| format!("Save error: {}", e))?;
+    println!("[save_annotated_screenshot] Saved to {:?}", filename);
+
+    let path_str = filename.to_string_lossy().to_string();
+    let _ = app.emit("screenshot-saved", &path_str);
+
+    // Show preview window
+    let is_caption_mode = caption_mode.unwrap_or(false);
+    if is_caption_mode {
+        if let Err(e) = crate::windows::open_caption_window(&app, &path_str) {
+            println!("[save_annotated_screenshot] Failed to open caption window: {}", e);
+        }
+    } else {
+        let cfg = crate::config::load_config();
+        if cfg.screenshot_preview_enabled {
+            if let Err(e) = crate::windows::open_preview_window(&app, &path_str) {
+                println!("[save_annotated_screenshot] Failed to open preview: {}", e);
+            }
+        }
+    }
+
+    Ok(path_str)
+}

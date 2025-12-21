@@ -20,8 +20,10 @@
     "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-global-shortcut": "^2.3.1",
     "@tauri-apps/plugin-opener": "^2",
+    "konva": "^10.0.12",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-konva": "^19.2.1"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

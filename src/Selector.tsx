@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type Konva from "konva";
+import { AnnotationCanvas } from "./components/AnnotationCanvas";
+import { useAnnotationEditor } from "./hooks/useAnnotationEditor";
+import type { AnnotationTool } from "./types/annotation";
+import { ANNOTATION_COLORS, STYLE_OPTIONS } from "./types/annotation";
 
 type Mode = "image" | "staticimage" | "gif" | "video" | "scroll";
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | null;
@@ -38,6 +43,14 @@ export default function Selector() {
     return localStorage.getItem("captionEnabled") === "true";
   });
 
+  // Annotation editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const editor = useAnnotationEditor();
+
   // Persist captionEnabled
   useEffect(() => {
     localStorage.setItem("captionEnabled", String(captionEnabled));
@@ -52,6 +65,35 @@ export default function Selector() {
   const closeWindow = useCallback(async () => {
     await getCurrentWindow().close();
   }, []);
+
+  // Enter annotation editing mode
+  const enterEditMode = useCallback(async (tool: AnnotationTool) => {
+    if (!selectionRect) return;
+
+    // Capture the region as preview image
+    const region = {
+      x: Math.round(selectionRect.x),
+      y: Math.round(selectionRect.y),
+      width: Math.round(selectionRect.w),
+      height: Math.round(selectionRect.h),
+    };
+
+    try {
+      const preview = await invoke<string>("capture_region_preview", { region });
+      setPreviewImage(preview);
+      setIsEditing(true);
+      editor.setActiveTool(tool);
+    } catch (e) {
+      console.error("[Selector] Failed to capture preview:", e);
+    }
+  }, [selectionRect, editor]);
+
+  // Exit editing mode
+  const exitEditMode = useCallback(() => {
+    setIsEditing(false);
+    setPreviewImage(null);
+    editor.reset();
+  }, [editor]);
 
   // Fetch pending mode and config on mount
   useEffect(() => {
@@ -116,7 +158,7 @@ export default function Selector() {
   }, [isSelecting, showToolbar]);
 
   const doCapture = useCallback(async () => {
-    console.log("[Selector] doCapture called, mode:", mode, "selectionRect:", selectionRect);
+    console.log("[Selector] doCapture called, mode:", mode, "selectionRect:", selectionRect, "isEditing:", isEditing);
     if (!selectionRect) return;
 
     const region = {
@@ -130,6 +172,30 @@ export default function Selector() {
 
     if (mode === "image" || mode === "staticimage") {
       const win = getCurrentWindow();
+
+      // If in editing mode with annotations, export the canvas
+      if (isEditing && stageRef.current && editor.annotations.length > 0) {
+        try {
+          // Hide transformer before export
+          const transformer = stageRef.current.findOne("Transformer");
+          transformer?.hide();
+
+          // Export canvas to base64
+          const dataUrl = stageRef.current.toDataURL({ pixelRatio: window.devicePixelRatio });
+          const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+
+          transformer?.show();
+
+          await win.hide();
+          await invoke("save_annotated_screenshot", { imageData: base64, captionMode: captionEnabled });
+          await win.close();
+          return;
+        } catch (e) {
+          console.error("[Selector] Failed to export annotated screenshot:", e);
+        }
+      }
+
+      // Normal screenshot flow
       await win.hide();
       // Static mode doesn't need delay since we use cached screenshot
       if (mode === "image") {
@@ -165,7 +231,7 @@ export default function Selector() {
         }
       }
     }
-  }, [selectionRect, mode, closeWindow]);
+  }, [selectionRect, mode, closeWindow, isEditing, editor.annotations.length, captionEnabled]);
 
   // Resize handle start
   const handleResizeStart = useCallback(
@@ -183,6 +249,14 @@ export default function Selector() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("#toolbar")) return;
     if ((e.target as HTMLElement).closest(".resize-handle")) return;
+    if ((e.target as HTMLElement).closest(".annotation-canvas")) return;
+    if ((e.target as HTMLElement).closest(".tool-dropdown")) return;
+
+    // Close dropdown when clicking outside
+    setOpenDropdown(null);
+
+    // In editing mode, don't reset selection
+    if (isEditing) return;
 
     setShowToolbar(false);
     setSelectionRect(null);
@@ -191,7 +265,7 @@ export default function Selector() {
 
     startPos.current = { x: e.clientX, y: e.clientY };
     setIsSelecting(true);
-  }, []);
+  }, [isEditing]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
@@ -363,6 +437,42 @@ export default function Selector() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
+      // Editing mode shortcuts
+      if (isEditing) {
+        if (e.key === "Escape") {
+          exitEditMode();
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            editor.redo();
+          } else {
+            editor.undo();
+          }
+          return;
+        }
+        if (e.key === "Delete" || e.key === "Backspace") {
+          if (editor.selectedId && !(e.target as HTMLElement).closest("textarea")) {
+            e.preventDefault();
+            editor.deleteSelected();
+          }
+          return;
+        }
+        // Tool shortcuts in editing mode
+        if (e.key === "1") { editor.setActiveTool("select"); return; }
+        if (e.key === "2") { editor.setActiveTool("rect"); return; }
+        if (e.key === "3") { editor.setActiveTool("mosaic"); return; }
+        if (e.key === "4") { editor.setActiveTool("arrow"); return; }
+        if (e.key === "5") { editor.setActiveTool("text"); return; }
+        if (e.key === "Enter") {
+          await doCapture();
+          return;
+        }
+        return;
+      }
+
+      // Normal mode shortcuts
       if (e.key === "Escape") {
         await closeWindow();
       } else if (e.key === "Shift" && (mode === "image" || mode === "staticimage")) {
@@ -385,12 +495,13 @@ export default function Selector() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectionRect, doCapture, closeWindow, scrollCaptureEnabled, mode, toggleStaticMode]);
+  }, [selectionRect, doCapture, closeWindow, scrollCaptureEnabled, mode, toggleStaticMode, isEditing, editor, exitEditMode]);
 
   const toolbarStyle: React.CSSProperties = selectionRect
     ? {
-        left: Math.max(10, Math.min(selectionRect.x + selectionRect.w / 2 - 100, window.innerWidth - 220)),
+        left: selectionRect.x + selectionRect.w / 2,
         top: Math.min(selectionRect.y + selectionRect.h + 12, window.innerHeight - 60),
+        transform: "translateX(-50%)",
       }
     : {};
 
@@ -482,71 +593,263 @@ export default function Selector() {
 
       {showToolbar && (
         <div id="toolbar" className="toolbar" style={toolbarStyle}>
-          <button
-            className={`toolbar-btn has-tooltip ${mode === "image" || mode === "staticimage" ? "active" : ""}`}
-            onClick={isStaticMode ? undefined : () => setMode("image")}
-            disabled={isStaticMode}
-            style={isStaticMode ? { cursor: "default" } : undefined}
-            data-tooltip={isStaticMode ? "静态截图模式" : "截图 (S) - 按 Shift 切换静态/动态"}
-          >
-            S
-          </button>
-          <button
-            className={`toolbar-btn has-tooltip ${mode === "gif" ? "active" : ""}`}
-            onClick={isStaticMode ? undefined : () => setMode("gif")}
-            disabled={isStaticMode}
-            style={isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            data-tooltip={isStaticMode ? "静态模式下不可用" : "录制 GIF (G) - 选区内录制动画"}
-          >
-            G
-          </button>
-          <button
-            className={`toolbar-btn has-tooltip ${mode === "scroll" ? "active" : ""}`}
-            onClick={scrollCaptureEnabled && !isStaticMode ? () => setMode("scroll") : undefined}
-            disabled={!scrollCaptureEnabled || isStaticMode}
-            style={!scrollCaptureEnabled || isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            data-tooltip={isStaticMode ? "静态模式下不可用" : scrollCaptureEnabled ? "滚动截图 (L) - 自动拼接长图" : "滚动截图 (L) - 需在设置中启用"}
-          >
-            L
-          </button>
-          <button
-            className="toolbar-btn has-tooltip"
-            disabled
-            style={{ opacity: 0.4, cursor: "not-allowed" }}
-            data-tooltip="录制视频 (V) - 即将推出"
-          >
-            V
-          </button>
+          {/* 模式组 */}
+          <div className="toolbar-section">
+            <span className="toolbar-section-title">模式</span>
+            <div className="toolbar-section-content">
+              <button
+                className={`toolbar-btn has-tooltip ${mode === "image" || mode === "staticimage" ? "active" : ""}`}
+                onClick={isStaticMode ? undefined : () => setMode("image")}
+                disabled={isStaticMode}
+                style={isStaticMode ? { cursor: "default" } : undefined}
+                data-tooltip={isStaticMode ? "静态截图模式" : "截图 (S) - 按 Shift 切换静态/动态"}
+              >
+                S
+              </button>
+              <button
+                className={`toolbar-btn has-tooltip ${mode === "gif" ? "active" : ""}`}
+                onClick={isStaticMode ? undefined : () => setMode("gif")}
+                disabled={isStaticMode}
+                style={isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                data-tooltip={isStaticMode ? "静态模式下不可用" : "录制 GIF (G) - 选区内录制动画"}
+              >
+                G
+              </button>
+              <button
+                className={`toolbar-btn has-tooltip ${mode === "scroll" ? "active" : ""}`}
+                onClick={scrollCaptureEnabled && !isStaticMode ? () => setMode("scroll") : undefined}
+                disabled={!scrollCaptureEnabled || isStaticMode}
+                style={!scrollCaptureEnabled || isStaticMode ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                data-tooltip={isStaticMode ? "静态模式下不可用" : scrollCaptureEnabled ? "滚动截图 (L) - 自动拼接长图" : "滚动截图 (L) - 需在设置中启用"}
+              >
+                L
+              </button>
+              <button
+                className="toolbar-btn has-tooltip"
+                disabled
+                style={{ opacity: 0.4, cursor: "not-allowed" }}
+                data-tooltip="录制视频 (V) - 即将推出"
+              >
+                V
+              </button>
+            </div>
+          </div>
+
           <div className="toolbar-divider" />
-          <button
-            className={`toolbar-btn has-tooltip ${excludeTitlebar ? "active" : ""}`}
-            onClick={() => setExcludeTitlebar(!excludeTitlebar)}
-            data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
-          >
-            T
-          </button>
-          <button
-            className={`toolbar-btn has-tooltip ${captionEnabled ? "active" : ""}`}
-            onClick={() => setCaptionEnabled(!captionEnabled)}
-            data-tooltip="添加描述 (C) - 截图后输入说明文字"
-          >
-            C
-          </button>
+
+          {/* 标注组 */}
+          <div className="toolbar-section">
+            <span className="toolbar-section-title">标注</span>
+            <div className="toolbar-section-content">
+              <div className="toolbar-group">
+                <button
+                  className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "rect" ? "active" : ""}`}
+                  onClick={() => isEditing ? editor.setActiveTool("rect") : enterEditMode("rect")}
+                  data-tooltip="矩形标注 (2)"
+                >
+                  □
+                </button>
+                {isEditing && editor.activeTool === "rect" && (
+                  <div className="tool-dropdown">
+                    {STYLE_OPTIONS.rect.map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`dropdown-item ${editor.activeStyles.rect === opt.value ? "active" : ""}`}
+                        onClick={() => editor.setRectStyle(opt.value as typeof editor.activeStyles.rect)}
+                      >
+                        <span className="dropdown-icon">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="toolbar-group">
+                <button
+                  className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "mosaic" ? "active" : ""}`}
+                  onClick={() => isEditing ? editor.setActiveTool("mosaic") : enterEditMode("mosaic")}
+                  data-tooltip="马赛克 (3)"
+                >
+                  ▦
+                </button>
+                {isEditing && editor.activeTool === "mosaic" && (
+                  <div className="tool-dropdown">
+                    {STYLE_OPTIONS.mosaic.map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`dropdown-item ${editor.activeStyles.mosaic === opt.value ? "active" : ""}`}
+                        onClick={() => editor.setMosaicStyle(opt.value as typeof editor.activeStyles.mosaic)}
+                      >
+                        <span className="dropdown-icon">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="toolbar-group">
+                <button
+                  className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "arrow" ? "active" : ""}`}
+                  onClick={() => isEditing ? editor.setActiveTool("arrow") : enterEditMode("arrow")}
+                  data-tooltip="箭头 (4)"
+                >
+                  →
+                </button>
+                {isEditing && editor.activeTool === "arrow" && (
+                  <div className="tool-dropdown">
+                    {STYLE_OPTIONS.arrow.map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`dropdown-item ${editor.activeStyles.arrow === opt.value ? "active" : ""}`}
+                        onClick={() => editor.setArrowStyle(opt.value as typeof editor.activeStyles.arrow)}
+                      >
+                        <span className="dropdown-icon">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "text" ? "active" : ""}`}
+                onClick={() => isEditing ? editor.setActiveTool("text") : enterEditMode("text")}
+                data-tooltip="文字 (5)"
+              >
+                T
+              </button>
+            </div>
+          </div>
+
+          {/* 颜色组 (only in editing mode) */}
+          {isEditing && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-section">
+                <span className="toolbar-section-title">颜色</span>
+                <div className="toolbar-section-content">
+                  <div className="color-picker">
+                    {ANNOTATION_COLORS.map((c) => (
+                      <button
+                        key={c.name}
+                        className={`color-dot ${editor.activeColor === c.value ? "active" : ""}`}
+                        style={{ backgroundColor: c.value }}
+                        onClick={() => editor.setActiveColor(c.value)}
+                        data-tooltip={c.name}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 历史组 (only in editing mode) */}
+          {isEditing && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-section">
+                <span className="toolbar-section-title">历史</span>
+                <div className="toolbar-section-content">
+                  <button
+                    className="toolbar-btn has-tooltip"
+                    onClick={editor.undo}
+                    disabled={!editor.canUndo}
+                    style={!editor.canUndo ? { opacity: 0.4 } : undefined}
+                    data-tooltip="撤销 (⌘Z)"
+                  >
+                    ↩
+                  </button>
+                  <button
+                    className="toolbar-btn has-tooltip"
+                    onClick={editor.redo}
+                    disabled={!editor.canRedo}
+                    style={!editor.canRedo ? { opacity: 0.4 } : undefined}
+                    data-tooltip="重做 (⌘⇧Z)"
+                  >
+                    ↪
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 选项组 (hidden in editing mode) */}
+          {!isEditing && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-section">
+                <span className="toolbar-section-title">选项</span>
+                <div className="toolbar-section-content">
+                  <button
+                    className={`toolbar-btn has-tooltip ${excludeTitlebar ? "active" : ""}`}
+                    onClick={() => setExcludeTitlebar(!excludeTitlebar)}
+                    data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
+                  >
+                    T
+                  </button>
+                  <button
+                    className={`toolbar-btn has-tooltip ${captionEnabled ? "active" : ""}`}
+                    onClick={() => setCaptionEnabled(!captionEnabled)}
+                    data-tooltip="添加描述 (C) - 截图后输入说明文字"
+                  >
+                    C
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="toolbar-divider" />
-          <button
-            className="toolbar-btn has-tooltip"
-            onClick={(e) => {
-              e.stopPropagation();
-              doCapture();
-            }}
-            data-tooltip="确认 (Enter)"
-          >
-            ✓
-          </button>
-          <button className="toolbar-btn has-tooltip" onClick={closeWindow} data-tooltip="取消 (ESC)">
-            X
-          </button>
+
+          {/* 操作组 */}
+          <div className="toolbar-section">
+            <span className="toolbar-section-title">操作</span>
+            <div className="toolbar-section-content">
+              <button
+                className="toolbar-btn has-tooltip"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  doCapture();
+                }}
+                data-tooltip="确认 (Enter)"
+              >
+                ✓
+              </button>
+              <button
+                className="toolbar-btn has-tooltip"
+                onClick={isEditing ? exitEditMode : closeWindow}
+                data-tooltip={isEditing ? "取消编辑 (ESC)" : "取消 (ESC)"}
+              >
+                X
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Annotation Canvas */}
+      {isEditing && previewImage && selectionRect && (
+        <AnnotationCanvas
+          imageUrl={previewImage}
+          width={selectionRect.w}
+          height={selectionRect.h}
+          left={selectionRect.x}
+          top={selectionRect.y}
+          annotations={editor.annotations}
+          selectedId={editor.selectedId}
+          activeTool={editor.activeTool}
+          activeColor={editor.activeColor}
+          activeStyles={editor.activeStyles}
+          strokeWidth={editor.strokeWidth}
+          fontSize={editor.fontSize}
+          onAddAnnotation={editor.addAnnotation}
+          onUpdateAnnotation={editor.updateAnnotation}
+          onSelectAnnotation={editor.setSelectedId}
+          stageRef={stageRef}
+        />
       )}
     </div>
   );

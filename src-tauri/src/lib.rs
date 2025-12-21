@@ -205,6 +205,9 @@ pub fn run() {
             commands::check_screen_permission,
             commands::request_screen_permission,
             commands::open_permission_settings,
+            // Annotation commands
+            commands::capture_region_preview,
+            commands::save_annotated_screenshot,
             show_main_window,
             quit_app,
         ])
