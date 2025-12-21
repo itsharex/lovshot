@@ -115,7 +115,7 @@ export function AnnotationCanvas({
     // Check if clicked on empty space (Stage background)
     const clickedOnEmpty = e.target === e.target.getStage() || e.target.name() === 'background';
 
-    // If editing text, finish current edit first (always)
+    // If editing text, finish current edit first and stop (don't create new text on same click)
     if (editingTextId) {
       const currentText = textInputRef.current?.value || '';
       if (currentText.trim()) {
@@ -125,12 +125,7 @@ export function AnnotationCanvas({
         onDeleteAnnotation(editingTextId);
       }
       setEditingTextId(null);
-
-      // If not clicking on empty space or not using text tool, stop here
-      if (!clickedOnEmpty || activeTool !== 'text') {
-        return;
-      }
-      // Otherwise continue to create new text at clicked position
+      return; // Always stop here - user needs another click to create new text
     }
 
     if (activeTool === 'select') {
