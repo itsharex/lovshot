@@ -1,18 +1,16 @@
 # Changelog
 
-## 0.18.1
-
-### Patch Changes
-
-- fix(annotation): 修复点击空白处创建重复文字标注的问题
-
 ## 0.18.0
 
 ### Minor Changes
 
 - feat(selector): 添加选区放大镜功能、支持拖拽移动已确认的选区
-  fix(selector): 优化标注工具 dropdown 布局体验
-  fix(annotation): 修复文字标注输入与状态管理问题
+
+### Patch Changes
+
+- fix(selector): 优化标注工具 dropdown 布局体验
+- fix(annotation): 修复文字标注输入与状态管理问题
+- fix(annotation): 修复点击空白处创建重复文字标注的问题
 
 ## 0.17.0
 
