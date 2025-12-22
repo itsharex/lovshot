@@ -119,17 +119,16 @@ body,
 
 .size-label {
   position: absolute;
-  background: var(--card);
-  color: var(--foreground);
-  border: 1px solid var(--border);
-  padding: 4px 8px;
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
   font-family: ui-monospace, monospace;
   font-size: 12px;
   pointer-events: none;
   z-index: 15;
   display: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  white-space: nowrap;
 }
 
 .toolbar {
@@ -568,26 +567,45 @@ kbd {
 
 .magnifier-info {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 8px;
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted-foreground);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.magnifier-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.magnifier-color-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+}
+
+.magnifier-color {
+  color: var(--foreground);
+  font-weight: 500;
 }
 
 .magnifier-coords {
-  color: var(--foreground);
+  color: var(--muted-foreground);
 }
 
 .magnifier-hint {
-  color: var(--primary);
-  font-weight: 500;
+  color: var(--muted-foreground);
+  opacity: 0.6;
 }
 
 /* Annotation Canvas */
@@ -610,4 +628,53 @@ kbd {
   resize: none;
   min-width: 100px;
   min-height: 24px;
+}
+
+/* Scroll Capture Mode */
+.selector-container.scroll-capture-mode {
+  background: transparent !important;
+  cursor: ns-resize;
+  /* 鼠标穿透由 macOS setIgnoresMouseEvents API 处理 */
+}
+
+/* 四角标记 */
+.corner-mark {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: #CC785C;
+  border-style: solid;
+  border-width: 0;
+}
+
+.corner-tl {
+  top: -2px;
+  left: -2px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 4px;
+}
+
+.corner-tr {
+  top: -2px;
+  right: -2px;
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 4px;
+}
+
+.corner-bl {
+  bottom: -2px;
+  left: -2px;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 4px;
+}
+
+.corner-br {
+  bottom: -2px;
+  right: -2px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 4px;
 }

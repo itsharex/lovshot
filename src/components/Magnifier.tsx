@@ -1,4 +1,4 @@
-import { useRef, useEffect, memo } from "react";
+import { useRef, useEffect, useState, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface MagnifierProps {
@@ -10,14 +10,17 @@ interface MagnifierProps {
   screenHeight: number;
   /** 是否正在拖拽选区 */
   isDragging?: boolean;
+  /** 选区起点（拖拽时） */
+  selectionStart?: { x: number; y: number };
+  /** 颜色变化回调 */
+  onColorChange?: (color: string) => void;
 }
 
 // 放大镜配置
 const MAGNIFIER_SIZE = 120; // 放大镜显示尺寸
 const ZOOM_LEVEL = 8; // 放大倍率
 const SOURCE_SIZE = Math.floor(MAGNIFIER_SIZE / ZOOM_LEVEL); // 源区域尺寸 (15x15 逻辑像素)
-const OFFSET = 20; // 光标偏移距离
-const INFO_HEIGHT = 30; // 信息栏高度
+const OFFSET = 24; // 光标偏移距离
 
 /**
  * 放大镜组件 - 直接从 Rust 获取小区域像素，无需传输整个屏幕
@@ -28,9 +31,12 @@ function MagnifierComponent({
   screenWidth,
   screenHeight,
   isDragging = false,
+  selectionStart,
+  onColorChange,
 }: MagnifierProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosRef = useRef({ x: -1, y: -1 });
+  const [centerColor, setCenterColor] = useState("#000000");
 
   // 获取并绘制像素
   useEffect(() => {
@@ -56,6 +62,16 @@ function MagnifierComponent({
 
       // 计算实际尺寸（像素数组是物理像素）
       const actualSize = Math.sqrt(pixels.length / 4);
+
+      // 提取中心像素颜色
+      const centerIdx = Math.floor(actualSize / 2);
+      const pixelIdx = (centerIdx * actualSize + centerIdx) * 4;
+      const r = pixels[pixelIdx];
+      const g = pixels[pixelIdx + 1];
+      const b = pixels[pixelIdx + 2];
+      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`.toUpperCase();
+      setCenterColor(hex);
+      onColorChange?.(hex);
 
       // 创建 ImageData
       const imageData = new ImageData(
@@ -104,18 +120,60 @@ function MagnifierComponent({
         crossSize
       );
     });
-  }, [cursorX, cursorY]);
+  }, [cursorX, cursorY, onColorChange]);
 
-  // 计算放大镜位置
-  const totalHeight = MAGNIFIER_SIZE + INFO_HEIGHT;
-  let magX = cursorX - OFFSET - MAGNIFIER_SIZE;
-  let magY = cursorY - OFFSET - totalHeight;
+  // 计算放大镜位置 - 跟随鼠标，但避开选区
+  const totalHeight = MAGNIFIER_SIZE + 40; // canvas + info bar (2 rows)
 
-  if (magX < 8) magX = cursorX + OFFSET;
-  if (magY < 8) magY = cursorY + OFFSET;
+  // 光标周围四个方向的候选位置
+  const candidates = [
+    { x: cursorX - OFFSET - MAGNIFIER_SIZE, y: cursorY - OFFSET - totalHeight }, // 左上
+    { x: cursorX + OFFSET, y: cursorY - OFFSET - totalHeight }, // 右上
+    { x: cursorX - OFFSET - MAGNIFIER_SIZE, y: cursorY + OFFSET }, // 左下
+    { x: cursorX + OFFSET, y: cursorY + OFFSET }, // 右下
+  ];
 
-  magX = Math.min(magX, screenWidth - MAGNIFIER_SIZE - 8);
-  magY = Math.min(magY, screenHeight - totalHeight - 8);
+  // 边界修正
+  const clamp = (pos: { x: number; y: number }) => ({
+    x: Math.max(8, Math.min(pos.x, screenWidth - MAGNIFIER_SIZE - 8)),
+    y: Math.max(8, Math.min(pos.y, screenHeight - totalHeight - 8)),
+  });
+
+  // 检查是否与选区重叠
+  const overlapsSelection = (cx: number, cy: number) => {
+    if (!isDragging || !selectionStart) return false;
+    const selX = Math.min(selectionStart.x, cursorX);
+    const selY = Math.min(selectionStart.y, cursorY);
+    const selW = Math.abs(cursorX - selectionStart.x);
+    const selH = Math.abs(cursorY - selectionStart.y);
+    const magRight = cx + MAGNIFIER_SIZE;
+    const magBottom = cy + totalHeight;
+    return !(cx > selX + selW || magRight < selX || cy > selY + selH || magBottom < selY);
+  };
+
+  // 检查是否遮挡光标
+  const overlapsCursor = (cx: number, cy: number) => {
+    const margin = 15;
+    return (
+      cursorX >= cx - margin &&
+      cursorX <= cx + MAGNIFIER_SIZE + margin &&
+      cursorY >= cy - margin &&
+      cursorY <= cy + totalHeight + margin
+    );
+  };
+
+  // 选择第一个不重叠的位置
+  let chosen = clamp(candidates[0]);
+  for (const c of candidates) {
+    const clamped = clamp(c);
+    if (!overlapsSelection(clamped.x, clamped.y) && !overlapsCursor(clamped.x, clamped.y)) {
+      chosen = clamped;
+      break;
+    }
+  }
+
+  const magX = chosen.x;
+  const magY = chosen.y;
 
   return (
     <div
@@ -130,12 +188,21 @@ function MagnifierComponent({
         width={MAGNIFIER_SIZE}
         height={MAGNIFIER_SIZE}
         className="magnifier-canvas"
+        style={{ width: MAGNIFIER_SIZE, height: MAGNIFIER_SIZE }}
       />
       <div className="magnifier-info">
-        <span className="magnifier-coords">
-          {Math.round(cursorX)}, {Math.round(cursorY)}
-        </span>
-        {isDragging && <span className="magnifier-hint">终点</span>}
+        <div className="magnifier-row">
+          <span className="magnifier-coords">{Math.round(cursorX)}, {Math.round(cursorY)}</span>
+          <span className="magnifier-hint">P</span>
+        </div>
+        <div className="magnifier-row">
+          <span
+            className="magnifier-color-swatch"
+            style={{ backgroundColor: centerColor }}
+          />
+          <span className="magnifier-color">{centerColor}</span>
+          <span className="magnifier-hint">C</span>
+        </div>
       </div>
     </div>
   );

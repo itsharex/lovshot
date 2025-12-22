@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type Konva from "konva";
 import { AnnotationCanvas } from "./components/AnnotationCanvas";
@@ -45,6 +46,7 @@ export default function Selector() {
   const [captionEnabled, setCaptionEnabled] = useState(() => {
     return localStorage.getItem("captionEnabled") === "true";
   });
+  const currentColorRef = useRef<string>("#000000");
 
   // Annotation editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -53,6 +55,12 @@ export default function Selector() {
   const [_openDropdown, setOpenDropdown] = useState<string | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const editor = useAnnotationEditor();
+
+  // Scroll capture state (事件驱动，不再轮询)
+  const [scrollCaptureActive, setScrollCaptureActive] = useState(false);
+  const [scrollPreview, setScrollPreview] = useState<string | null>(null);
+  const [scrollFrameCount, setScrollFrameCount] = useState(0);
+  const [scrollTotalHeight, setScrollTotalHeight] = useState(0);
 
   // Persist captionEnabled
   useEffect(() => {
@@ -97,6 +105,65 @@ export default function Selector() {
     setPreviewImage(null);
     editor.reset();
   }, [editor]);
+
+  // 监听后端的滚动捕获事件（事件驱动，替代轮询）
+  useEffect(() => {
+    if (!scrollCaptureActive) return;
+
+    let unlisten: (() => void) | null = null;
+
+    listen<{ frame_count: number; total_height: number; preview_base64: string }>(
+      "scroll-preview-update",
+      (event) => {
+        console.log("[Selector] 收到滚动更新事件, frames:", event.payload.frame_count);
+        setScrollPreview(event.payload.preview_base64);
+        setScrollFrameCount(event.payload.frame_count);
+        setScrollTotalHeight(event.payload.total_height);
+      }
+    ).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [scrollCaptureActive]);
+
+  // 滚动截图：完成并保存（自动保存到 ~/Pictures/lovshot/ 并显示在 Dashboard）
+  const finishScrollCapture = useCallback(async () => {
+    if (!scrollCaptureActive) return;
+
+    // Stop polling FIRST to prevent new FFT matching requests
+    setScrollCaptureActive(false);
+
+    try {
+      await invoke("set_selector_mouse_passthrough", { enabled: false });
+      // 保存、复制到剪贴板、发送事件（后端处理）
+      await invoke("finish_scroll_capture", { crop: null });
+      await closeWindow();
+    } catch (e) {
+      console.error("[Selector] Failed to finish scroll capture:", e);
+    }
+  }, [scrollCaptureActive, closeWindow]);
+
+  // 滚动截图：取消
+  const cancelScrollCapture = useCallback(async () => {
+    if (!scrollCaptureActive) return;
+
+    // Stop polling FIRST to prevent new FFT matching requests
+    setScrollCaptureActive(false);
+    setScrollPreview(null);
+    setScrollFrameCount(0);
+    setScrollTotalHeight(0);
+
+    try {
+      await invoke("set_selector_mouse_passthrough", { enabled: false });
+      await invoke("cancel_scroll_capture");
+    } catch {
+      // ignore
+    }
+    await closeWindow();
+  }, [scrollCaptureActive, closeWindow]);
 
   // Fetch pending mode and config on mount
   useEffect(() => {
@@ -227,28 +294,25 @@ export default function Selector() {
       await invoke("start_recording");
       await closeWindow();
     } else if (mode === "scroll") {
-      // Scroll mode: open overlays first (captures initial frame + shows UI), then hide selector
+      // Scroll mode: 进入本地滚动捕获模式（类似静态截图）
       console.log("[Selector] 进入 scroll 模式");
-      const win = getCurrentWindow();
 
       try {
-        // Open scroll UI - this internally:
-        // 1. Shows region border immediately (selection preserved)
-        // 2. Captures initial frame (no delay)
-        // 3. Opens preview window with data ready
-        await invoke("open_scroll_overlay", { region });
+        // 调用后端初始化滚动捕获，返回首帧预览
+        const result = await invoke<{ frame_count: number; total_height: number; preview_base64: string }>(
+          "start_scroll_capture"
+        );
 
-        // Hide selector so it doesn't intercept scroll events
-        await win.hide();
+        // 设置窗口鼠标穿透，让用户可以滚动底层窗口
+        await invoke("set_selector_mouse_passthrough", { enabled: true });
 
-        await win.close();
+        setScrollCaptureActive(true);
+        setScrollPreview(result.preview_base64);
+        setScrollFrameCount(result.frame_count);
+        setScrollTotalHeight(result.total_height);
+        setShowToolbar(false); // 隐藏工具栏，显示滚动捕获UI
       } catch (e) {
         console.error("[Selector] Failed to start scroll capture:", e);
-        try {
-          await win.show();
-        } catch {
-          // ignore
-        }
       }
     }
   }, [selectionRect, mode, closeWindow, isEditing, editor.annotations.length, captionEnabled]);
@@ -350,6 +414,12 @@ export default function Selector() {
           selectionRef.current.style.width = `${w}px`;
           selectionRef.current.style.height = `${h}px`;
         }
+        if (sizeRef.current) {
+          sizeRef.current.style.left = `${x + w + 8}px`;
+          sizeRef.current.style.top = `${y + h - 24}px`;
+          sizeRef.current.textContent = `${Math.round(w)} × ${Math.round(h)}`;
+          sizeRef.current.style.display = "block";
+        }
         return;
       }
 
@@ -370,7 +440,7 @@ export default function Selector() {
 
       if (sizeRef.current) {
         sizeRef.current.style.left = `${x + w + 8}px`;
-        sizeRef.current.style.top = `${y + 8}px`;
+        sizeRef.current.style.top = `${y + h - 24}px`;
         sizeRef.current.textContent = `${w} × ${h}`;
         sizeRef.current.style.display = "block";
       }
@@ -393,6 +463,7 @@ export default function Selector() {
         setResizeDir(null);
         startRect.current = null;
         setOriginalWindowInfo(null); // Clear window info since user resized the selection
+        if (sizeRef.current) sizeRef.current.style.display = "none";
         return;
       }
 
@@ -405,11 +476,34 @@ export default function Selector() {
       const h = Math.abs(e.clientY - startPos.current.y);
 
       if (w > 10 && h > 10) {
-        setSelectionRect({ x, y, w, h });
-        setShowToolbar(true);
-        setHoveredWindow(null); // 用户拖拽了自定义区域，清除窗口预览
-        setOriginalWindowInfo(null); // Clear window info since user dragged custom area
+        const newRect = { x, y, w, h };
+        setSelectionRect(newRect);
+        setHoveredWindow(null);
+        setOriginalWindowInfo(null);
         if (sizeRef.current) sizeRef.current.style.display = "none";
+
+        // scroll 模式：选区确认后直接进入滚动捕获
+        if (mode === "scroll") {
+          const region = {
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(w),
+            height: Math.round(h),
+          };
+          invoke("set_region", { region }).then(() => {
+            invoke<{ frame_count: number; total_height: number; preview_base64: string }>("start_scroll_capture")
+              .then(async (result) => {
+                await invoke("set_selector_mouse_passthrough", { enabled: true });
+                setScrollCaptureActive(true);
+                setScrollPreview(result.preview_base64);
+                setScrollFrameCount(result.frame_count);
+                setScrollTotalHeight(result.total_height);
+              })
+              .catch((e) => console.error("[Selector] Failed to start scroll capture:", e));
+          });
+        } else {
+          setShowToolbar(true);
+        }
       } else {
         if (selectionRef.current) selectionRef.current.style.display = "none";
         if (sizeRef.current) sizeRef.current.style.display = "none";
@@ -419,19 +513,18 @@ export default function Selector() {
 
         if (windowInfo) {
           setCurrentTitlebarHeight(windowInfo.titlebar_height);
-          setOriginalWindowInfo(windowInfo); // Store for later toggle
+          setOriginalWindowInfo(windowInfo);
 
-          // Apply excludeTitlebar if enabled
           const finalY = excludeTitlebar ? windowInfo.y + windowInfo.titlebar_height : windowInfo.y;
           const finalH = excludeTitlebar ? windowInfo.height - windowInfo.titlebar_height : windowInfo.height;
 
-          setSelectionRect({
+          const newRect = {
             x: windowInfo.x,
             y: finalY,
             w: windowInfo.width,
             h: finalH,
-          });
-          setShowToolbar(true);
+          };
+          setSelectionRect(newRect);
           setShowHint(false);
           setHoveredWindow(null);
 
@@ -442,12 +535,35 @@ export default function Selector() {
             selectionRef.current.style.height = `${finalH}px`;
             selectionRef.current.style.display = "block";
           }
+
+          // scroll 模式：选区确认后直接进入滚动捕获
+          if (mode === "scroll") {
+            const region = {
+              x: Math.round(windowInfo.x),
+              y: Math.round(finalY),
+              width: Math.round(windowInfo.width),
+              height: Math.round(finalH),
+            };
+            invoke("set_region", { region }).then(() => {
+              invoke<{ frame_count: number; total_height: number; preview_base64: string }>("start_scroll_capture")
+                .then(async (result) => {
+                  await invoke("set_selector_mouse_passthrough", { enabled: true });
+                  setScrollCaptureActive(true);
+                  setScrollPreview(result.preview_base64);
+                  setScrollFrameCount(result.frame_count);
+                  setScrollTotalHeight(result.total_height);
+                })
+                .catch((e) => console.error("[Selector] Failed to start scroll capture:", e));
+            });
+          } else {
+            setShowToolbar(true);
+          }
         } else {
           setShowHint(true);
         }
       }
     },
-    [isSelecting, resizeDir, isDragging, excludeTitlebar]
+    [isSelecting, resizeDir, isDragging, excludeTitlebar, mode]
   );
 
   // Re-calculate selection when excludeTitlebar changes (only for window selections)
@@ -509,10 +625,35 @@ export default function Selector() {
         return;
       }
 
+      // 滚动捕获模式的快捷键
+      if (scrollCaptureActive) {
+        if (e.key === "Escape") {
+          await cancelScrollCapture();
+          return;
+        }
+        if (e.key === "Enter") {
+          await finishScrollCapture();
+          return;
+        }
+        return; // 滚动模式下忽略其他快捷键
+      }
+
       // ESC closes window (when not typing)
       if (e.key === "Escape") {
         await closeWindow();
         return;
+      }
+
+      // C copies color, P copies position (when magnifier visible)
+      if (!showToolbar && !isEditing && mousePos) {
+        if (e.key === "c" || e.key === "C") {
+          navigator.clipboard.writeText(currentColorRef.current);
+          return;
+        }
+        if (e.key === "p" || e.key === "P") {
+          navigator.clipboard.writeText(`${Math.round(mousePos.x)}, ${Math.round(mousePos.y)}`);
+          return;
+        }
       }
 
       // Editing mode shortcuts
@@ -567,7 +708,7 @@ export default function Selector() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectionRect, doCapture, closeWindow, scrollCaptureEnabled, mode, toggleStaticMode, isEditing, editor, exitEditMode]);
+  }, [selectionRect, doCapture, closeWindow, scrollCaptureEnabled, mode, toggleStaticMode, isEditing, editor, exitEditMode, scrollCaptureActive, finishScrollCapture, cancelScrollCapture, showToolbar, mousePos]);
 
   const toolbarStyle: React.CSSProperties = selectionRect
     ? {
@@ -584,10 +725,10 @@ export default function Selector() {
 
   return (
     <div
-      className={`selector-container ${showCrosshair ? "hide-cursor" : ""}`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      className={`selector-container ${showCrosshair ? "hide-cursor" : ""} ${scrollCaptureActive ? "scroll-capture-mode" : ""}`}
+      onMouseDown={scrollCaptureActive ? undefined : handleMouseDown}
+      onMouseMove={scrollCaptureActive ? undefined : handleMouseMove}
+      onMouseUp={scrollCaptureActive ? undefined : handleMouseUp}
       style={isStaticMode && screenSnapshot ? { background: `url(${screenSnapshot}) no-repeat center/cover` } : undefined}
     >
       {showWindowHighlight && (
@@ -607,14 +748,16 @@ export default function Selector() {
           <div className="crosshair-v" style={{ left: mousePos!.x }} />
         </>
       )}
-      {/* Magnifier - 在选区确认前显示 */}
-      {!showToolbar && !isEditing && mousePos && magnifierReady && (
+      {/* Magnifier - 在选区确认前显示，滚动模式下隐藏 */}
+      {!showToolbar && !isEditing && !scrollCaptureActive && mousePos && magnifierReady && (
         <Magnifier
           cursorX={mousePos.x}
           cursorY={mousePos.y}
           screenWidth={window.innerWidth}
           screenHeight={window.innerHeight}
           isDragging={isSelecting}
+          selectionStart={isSelecting ? startPos.current : undefined}
+          onColorChange={(color) => { currentColorRef.current = color; }}
         />
       )}
       <div ref={selectionRef} className="selection" />
@@ -683,11 +826,6 @@ export default function Selector() {
         </>
       )}
 
-      {showHint && (
-        <div className="hint">
-          Drag to select area. Press <kbd>ESC</kbd> to cancel.
-        </div>
-      )}
 
       {showToolbar && (
         <div id="toolbar" className="toolbar" style={toolbarStyle}>
@@ -970,6 +1108,87 @@ export default function Selector() {
           onSelectAnnotation={editor.setSelectedId}
           stageRef={stageRef}
         />
+      )}
+
+      {/* Scroll Capture Mode UI */}
+      {scrollCaptureActive && selectionRect && (
+        <>
+          {/* 选区边框 - 四角标记 */}
+          <div
+            className="scroll-capture-border"
+            style={{
+              position: "fixed",
+              left: selectionRect.x - 2,
+              top: selectionRect.y - 2,
+              width: selectionRect.w + 4,
+              height: selectionRect.h + 4,
+              border: "2px solid #CC785C",
+              borderRadius: 4,
+              pointerEvents: "none",
+              zIndex: 100,
+            }}
+          >
+            {/* 四角标记 */}
+            <div className="corner-mark corner-tl" />
+            <div className="corner-mark corner-tr" />
+            <div className="corner-mark corner-bl" />
+            <div className="corner-mark corner-br" />
+          </div>
+
+          {/* 底部预览条 */}
+          <div
+            className="scroll-capture-bar"
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 80,
+              background: "rgba(24, 24, 24, 0.95)",
+              borderTop: "1px solid rgba(204, 120, 92, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 24,
+              zIndex: 200,
+            }}
+          >
+            {/* 缩略图预览 */}
+            {scrollPreview && (
+              <div
+                style={{
+                  height: 60,
+                  maxWidth: 200,
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                }}
+              >
+                <img
+                  src={scrollPreview}
+                  alt=""
+                  style={{ height: "100%", width: "auto", objectFit: "contain" }}
+                />
+              </div>
+            )}
+
+            {/* 统计信息 */}
+            <div style={{ color: "#fff", fontSize: 14 }}>
+              <span style={{ color: "#CC785C", fontWeight: 600 }}>{scrollFrameCount}</span> 帧
+              <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+              <span style={{ color: "#CC785C", fontWeight: 600 }}>{scrollTotalHeight}</span> px
+            </div>
+
+            {/* 操作提示 */}
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+              滚动页面，自动拼接
+              <span style={{ margin: "0 12px", opacity: 0.3 }}>|</span>
+              <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 3, margin: "0 4px" }}>Enter</kbd> 完成
+              <span style={{ margin: "0 8px", opacity: 0.3 }}>|</span>
+              <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 3, margin: "0 4px" }}>ESC</kbd> 取消
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
