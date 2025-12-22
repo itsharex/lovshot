@@ -192,6 +192,15 @@ function MagnifierComponent({
       />
       <div className="magnifier-info">
         <div className="magnifier-row">
+          <span className="magnifier-position-map">
+            <span
+              className="magnifier-position-dot"
+              style={{
+                left: `${(cursorX / screenWidth) * 100}%`,
+                top: `${(cursorY / screenHeight) * 100}%`,
+              }}
+            />
+          </span>
           <span className="magnifier-coords">{Math.round(cursorX)}, {Math.round(cursorY)}</span>
           <span className="magnifier-hint">P</span>
         </div>
