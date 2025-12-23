@@ -70,7 +70,7 @@ export default function Preview() {
         <div className="caption-input-area">
           <textarea
             className="caption-input"
-            placeholder="添加图片描述..."
+            placeholder="添加说明文字…"
             value={caption}
             onChange={(e) => {
               const val = e.target.value;
