@@ -253,9 +253,13 @@
 }
 
 /* Selected item highlight */
-.history-item.selected {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.history-item.selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--primary);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .dashboard-header {

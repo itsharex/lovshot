@@ -819,6 +819,24 @@ function App() {
                     className={`history-item ${selected?.path === item.path ? "selected" : ""} ${selectedPaths.has(item.path) ? "multi-selected" : ""} ${item.isLoading ? "loading" : ""} ${item.description ? "has-description" : ""}`}
                     onClick={(e) => !item.isLoading && handleItemClick(e, item)}
                     onContextMenu={(e) => handleContextMenu(e, item)}
+                    onKeyDown={(e) => {
+                      if (item.isLoading) return;
+                      const idx = history.indexOf(item);
+                      let nextIdx = -1;
+                      if (e.key === "ArrowRight") nextIdx = Math.min(idx + 1, history.length - 1);
+                      else if (e.key === "ArrowLeft") nextIdx = Math.max(idx - 1, 0);
+                      else if (e.key === "ArrowDown") nextIdx = Math.min(idx + 3, history.length - 1);
+                      else if (e.key === "ArrowUp") nextIdx = Math.max(idx - 3, 0);
+                      if (nextIdx >= 0 && nextIdx !== idx) {
+                        e.preventDefault();
+                        const next = history[nextIdx];
+                        if (!next.isLoading) setSelected(next);
+                        const nextEl = document.querySelector(`[data-path="${next.path}"]`) as HTMLElement;
+                        nextEl?.focus();
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
                     title={isWideScreen ? item.filename : `${item.filename}\n${formatSize(item.size)}\n拖动框选`}
                   >
                     {item.isLoading ? (
