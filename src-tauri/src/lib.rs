@@ -198,6 +198,7 @@ pub fn run() {
             commands::delete_file,
             commands::open_caption_editor,
             commands::copy_image_to_clipboard,
+            commands::copy_rgba_to_clipboard,
             // Folder commands
             commands::get_folders,
             commands::create_folder,

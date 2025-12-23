@@ -1324,6 +1324,15 @@ pub fn copy_image_to_clipboard(app: AppHandle, path: String) -> Result<(), Strin
     Ok(())
 }
 
+#[tauri::command]
+pub fn copy_rgba_to_clipboard(app: AppHandle, data: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+    println!("[copy_rgba_to_clipboard] {}x{}, data len: {}", width, height, data.len());
+    let tauri_image = tauri::image::Image::new_owned(data, width, height);
+    app.clipboard().write_image(&tauri_image).map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+    println!("[copy_rgba_to_clipboard] Success");
+    Ok(())
+}
+
 /// Capture a region and return base64 PNG for annotation editing
 #[tauri::command(rename_all = "camelCase")]
 pub fn capture_region_preview(

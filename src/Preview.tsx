@@ -2,15 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
+import { LogicalSize } from "@tauri-apps/api/dpi";
+import html2canvas from "html2canvas";
 
 const SHARE_TEMPLATES = [
-  { id: "caption_below", label: "标准" },
+  { id: "clean", label: "简约" },
   { id: "card", label: "卡片" },
-  { id: "minimal", label: "极简" },
-  { id: "social", label: "社交" },
+  { id: "polaroid", label: "拍立得" },
+  { id: "quote", label: "引用" },
 ] as const;
 
-type TemplateId = typeof SHARE_TEMPLATES[number]["id"];
+type TemplateId = (typeof SHARE_TEMPLATES)[number]["id"];
 
 export default function Preview() {
   const params = new URLSearchParams(window.location.search);
@@ -19,16 +21,38 @@ export default function Preview() {
   const isCaptionMode = mode === "caption";
 
   const [caption, setCaption] = useState("");
-  const [template, setTemplate] = useState<TemplateId>("caption_below");
+  const [template, setTemplate] = useState<TemplateId>("clean");
   const [composing, setComposing] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const captionRef = useRef(caption);
+  const renderRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   captionRef.current = caption;
 
+  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
+
+  const resizeWindowToFit = async (naturalWidth: number, naturalHeight: number) => {
+    const windowWidth = 480;
+    const contentWidth = windowWidth - 16 - 32; // margin + padding
+    const scale = Math.min(1, contentWidth / naturalWidth);
+    const scaledHeight = naturalHeight * scale;
+    // Add padding for template chrome (varies by template)
+    const templatePadding = template === "polaroid" ? 120 : template === "card" ? 80 : 60;
+    const previewHeight = scaledHeight + templatePadding;
+    const controlsHeight = 160;
+    const windowPadding = 32;
+    const totalHeight = previewHeight + controlsHeight + windowPadding;
+    const height = Math.min(Math.max(totalHeight, 320), 800);
+    try {
+      await getCurrentWindow().setSize(new LogicalSize(windowWidth, height));
+    } catch (e) {
+      console.error("[Preview] resize failed:", e);
+    }
+  };
+
   const handleClose = async () => {
-    console.log("[Preview] handleClose called");
     try {
       await getCurrentWindow().close();
-      console.log("[Preview] close completed");
     } catch (e) {
       console.error("[Preview] close failed:", e);
     }
@@ -44,18 +68,11 @@ export default function Preview() {
     if (!isCaptionMode) return;
 
     const onKeyDown = async (e: KeyboardEvent) => {
-      console.log("[Preview] keydown:", e.key);
       if (e.key === "Escape") {
         e.preventDefault();
-        console.log("[Preview] ESC pressed, closing...");
-        try {
-          await getCurrentWindow().close();
-        } catch (err) {
-          console.error("[Preview] ESC close failed:", err);
-        }
+        await getCurrentWindow().close();
       } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        // Trigger copy with current template
         handleCopyComposed();
       }
     };
@@ -64,43 +81,126 @@ export default function Preview() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isCaptionMode, path]);
 
+  // Resize window when template changes
+  useEffect(() => {
+    if (isCaptionMode && imageLoaded && imgSize.width > 0) {
+      resizeWindowToFit(imgSize.width, imgSize.height);
+    }
+  }, [template, isCaptionMode, imageLoaded, imgSize]);
+
   const handleCopyComposed = async () => {
-    if (composing) return;
-    const text = captionRef.current.trim();
-    if (!text) return;
+    if (composing || !renderRef.current || !captionRef.current.trim()) return;
     setComposing(true);
+
     try {
-      console.log("[Preview] Composing with template:", template);
-      await invoke("compose_share", {
-        sourcePath: path,
-        caption: text,
-        template,
+      const canvas = await html2canvas(renderRef.current, {
+        backgroundColor: null,
+        scale: 2, // 2x for retina
+        useCORS: true,
+        logging: false,
       });
-      console.log("[Preview] Share image composed and copied");
+
+      // Get image data and send to Rust for clipboard
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setComposing(false);
+        return;
+      }
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const rgba = Array.from(imageData.data);
+
+      await invoke("copy_rgba_to_clipboard", {
+        data: rgba,
+        width: canvas.width,
+        height: canvas.height,
+      });
+      console.log("[Preview] Image copied to clipboard via Tauri");
     } catch (err) {
-      console.error("[Preview] compose_share failed:", err);
+      console.error("[Preview] Copy failed:", err);
     } finally {
       setComposing(false);
     }
   };
 
+  // Render template content for html2canvas capture
+  const renderTemplateContent = () => {
+    const imageSrc = convertFileSrc(path);
+
+    const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const img = e.currentTarget;
+      setImgSize({ width: img.naturalWidth, height: img.naturalHeight });
+      setImageLoaded(true);
+      resizeWindowToFit(img.naturalWidth, img.naturalHeight);
+    };
+
+    switch (template) {
+      case "clean":
+        return (
+          <div className="tpl-clean">
+            <img src={imageSrc} alt="" onLoad={handleImageLoad} />
+            {caption && <p className="tpl-caption">{caption}</p>}
+          </div>
+        );
+
+      case "card":
+        return (
+          <div className="tpl-card">
+            <div className="tpl-card-inner">
+              <img src={imageSrc} alt="" onLoad={handleImageLoad} />
+              {caption && <p className="tpl-caption">{caption}</p>}
+            </div>
+          </div>
+        );
+
+      case "polaroid":
+        return (
+          <div className="tpl-polaroid">
+            <div className="tpl-polaroid-frame">
+              <img src={imageSrc} alt="" onLoad={handleImageLoad} />
+              <div className="tpl-polaroid-bottom">
+                {caption && <p className="tpl-caption">{caption}</p>}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "quote":
+        return (
+          <div className="tpl-quote">
+            {caption && (
+              <blockquote className="tpl-quote-text">"{caption}"</blockquote>
+            )}
+            <img src={imageSrc} alt="" onLoad={handleImageLoad} />
+            <div className="tpl-quote-footer">via lovshot</div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   if (isCaptionMode) {
     return (
-      <div className={`share-preview template-${template}`}>
-        {/* Live preview area */}
-        <div className="share-preview-content" data-tauri-drag-region>
-          {template === "social" && caption && (
-            <div className="preview-caption-top">{caption}</div>
-          )}
-          <div className="preview-image-wrapper">
-            {path && <img src={convertFileSrc(path)} alt="Screenshot" />}
+      <div className="share-editor">
+        {/* Hidden render target for html2canvas */}
+        <div
+          ref={renderRef}
+          className={`share-render tpl-${template}`}
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: 0,
+          }}
+        >
+          {renderTemplateContent()}
+        </div>
+
+        {/* Visible preview area */}
+        <div className="share-preview" data-tauri-drag-region>
+          <div ref={previewRef} className={`share-preview-inner tpl-${template}`}>
+            {renderTemplateContent()}
           </div>
-          {template !== "social" && caption && (
-            <div className="preview-caption-bottom">{caption}</div>
-          )}
-          {template === "social" && (
-            <div className="preview-watermark">via lovshot</div>
-          )}
         </div>
 
         {/* Bottom controls */}
@@ -129,7 +229,8 @@ export default function Preview() {
           />
           <div className="share-footer">
             <span className="share-hint">
-              <kbd>⌘</kbd><kbd>↵</kbd> 复制 · <kbd>esc</kbd> 关闭
+              <kbd>⌘</kbd>
+              <kbd>↵</kbd> 复制 · <kbd>esc</kbd> 关闭
             </span>
             <div className="share-actions">
               <button
@@ -142,7 +243,7 @@ export default function Preview() {
               <button
                 className="share-btn"
                 onClick={handleCopyComposed}
-                disabled={composing || !caption.trim()}
+                disabled={composing || !caption.trim() || !imageLoaded}
               >
                 {composing ? "生成中…" : "复制"}
               </button>
