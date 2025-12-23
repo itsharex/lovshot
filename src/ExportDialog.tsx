@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import Markdown from "react-markdown";
 
 interface ExportDialogProps {
   folderPath: string | null;
@@ -72,7 +73,7 @@ export default function ExportDialog({ folderPath, folderName, onClose, onExport
     }
   };
 
-  // Transform content to markdown format (convert HTML/URL formats to markdown)
+  // Transform content to markdown format and convert local paths to asset:// URLs
   const transformedContent = useMemo(() => {
     if (!preview) return "";
 
@@ -88,6 +89,13 @@ export default function ExportDialog({ folderPath, folderName, onClose, onExport
       return `![](${path})`;
     });
 
+    // Pre-convert all local file paths to asset:// URLs before react-markdown sees them
+    // This avoids URL sanitization issues with react-markdown v9+
+    content = content.replace(/!\[([^\]]*)\]\((\/[^)]+)\)/g, (_, alt, path) => {
+      const assetUrl = convertFileSrc(path);
+      return `![${alt}](${assetUrl})`;
+    });
+
     return content;
   }, [preview]);
 
@@ -97,42 +105,27 @@ export default function ExportDialog({ folderPath, folderName, onClose, onExport
     </pre>
   );
 
-  // Parse markdown images and render them manually
-  const renderImages = useMemo(() => {
-    if (!transformedContent) return [];
-
-    const elements: React.ReactNode[] = [];
-    const lines = transformedContent.split("\n");
-
-    lines.forEach((line, i) => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
-
-      // Match ![alt](path)
-      const match = trimmed.match(/^!\[([^\]]*)\]\((.+)\)$/);
-      if (match) {
-        const [, alt, path] = match;
-        const imgSrc = path.startsWith("/") ? convertFileSrc(path) : path;
-        elements.push(
-          <div key={i} className="preview-image-block">
-            {alt && <p className="preview-image-caption">{alt}</p>}
-            <img src={imgSrc} alt={alt || ""} loading="lazy" />
-          </div>
-        );
-      } else if (!trimmed.startsWith("!")) {
-        // Regular text (like caption in writing mode)
-        elements.push(
-          <p key={i} className="preview-text-line">{trimmed}</p>
-        );
-      }
-    });
-
-    return elements;
-  }, [transformedContent]);
-
   const renderPreviewPane = () => (
     <div className="export-pane export-pane-preview">
-      {loading ? "Loading..." : renderImages.length > 0 ? renderImages : "(empty)"}
+      {loading ? (
+        "Loading..."
+      ) : transformedContent ? (
+        <Markdown
+          urlTransform={(url) => url} // Disable URL sanitization
+          components={{
+            img: ({ src, alt }) => (
+              <div className="preview-image-block">
+                {alt && <p className="preview-image-caption">{alt}</p>}
+                <img src={src || ""} alt={alt || ""} loading="lazy" />
+              </div>
+            ),
+          }}
+        >
+          {transformedContent}
+        </Markdown>
+      ) : (
+        "(empty)"
+      )}
     </div>
   );
 
