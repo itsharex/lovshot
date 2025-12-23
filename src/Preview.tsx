@@ -24,6 +24,7 @@ export default function Preview() {
   const [template, setTemplate] = useState<TemplateId>("clean");
   const [composing, setComposing] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [showWatermark, setShowWatermark] = useState(true); // TODO: VIP users can disable
   const captionRef = useRef(caption);
   const renderRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -133,12 +134,15 @@ export default function Preview() {
       resizeWindowToFit(img.naturalWidth, img.naturalHeight);
     };
 
+    const watermark = showWatermark && <span className="tpl-watermark">lovshot</span>;
+
     switch (template) {
       case "clean":
         return (
           <div className="tpl-clean">
             <img src={imageSrc} alt="" onLoad={handleImageLoad} />
             {caption && <p className="tpl-caption">{caption}</p>}
+            {watermark}
           </div>
         );
 
@@ -148,6 +152,7 @@ export default function Preview() {
             <div className="tpl-card-inner">
               <img src={imageSrc} alt="" onLoad={handleImageLoad} />
               {caption && <p className="tpl-caption">{caption}</p>}
+              {watermark}
             </div>
           </div>
         );
@@ -159,6 +164,7 @@ export default function Preview() {
               <img src={imageSrc} alt="" onLoad={handleImageLoad} />
               <div className="tpl-polaroid-bottom">
                 {caption && <p className="tpl-caption">{caption}</p>}
+                {watermark}
               </div>
             </div>
           </div>
@@ -171,7 +177,7 @@ export default function Preview() {
               <blockquote className="tpl-quote-text">"{caption}"</blockquote>
             )}
             <img src={imageSrc} alt="" onLoad={handleImageLoad} />
-            <div className="tpl-quote-footer">via lovshot</div>
+            <div className="tpl-quote-footer">{showWatermark ? "via lovshot" : ""}</div>
           </div>
         );
 
@@ -228,10 +234,14 @@ export default function Preview() {
             autoFocus
           />
           <div className="share-footer">
-            <span className="share-hint">
-              <kbd>⌘</kbd>
-              <kbd>↵</kbd> 复制 · <kbd>esc</kbd> 关闭
-            </span>
+            <label className="watermark-toggle">
+              <input
+                type="checkbox"
+                checked={showWatermark}
+                onChange={(e) => setShowWatermark(e.target.checked)}
+              />
+              <span>水印</span>
+            </label>
             <div className="share-actions">
               <button
                 className="share-btn secondary"

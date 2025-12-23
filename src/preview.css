@@ -102,11 +102,20 @@ body {
 .share-preview-inner {
   max-width: 100%;
   max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-preview-inner > * {
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .share-preview-inner img {
   max-width: 100%;
-  max-height: 100%;
+  flex: 1;
+  min-height: 0;
   height: auto;
   object-fit: contain;
 }
@@ -140,13 +149,18 @@ body {
 
 /* ===== Clean Template ===== */
 .tpl-clean {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
   background: var(--warm-bg);
-  padding: 24px;
+  padding: 20px;
 }
 
 .tpl-clean img {
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  min-height: 0;
+  object-fit: contain;
 }
 
 .tpl-clean .tpl-caption {
@@ -159,14 +173,20 @@ body {
 
 /* ===== Card Template ===== */
 .tpl-card {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
   background: linear-gradient(135deg, #e8e4dc 0%, #d4cfc5 100%);
-  padding: 32px;
+  padding: 24px;
 }
 
 .tpl-card-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--background);
   border-radius: 16px;
-  padding: 16px;
+  padding: 12px;
   box-shadow:
     0 4px 6px rgba(0, 0, 0, 0.05),
     0 10px 20px rgba(0, 0, 0, 0.08);
@@ -174,6 +194,8 @@ body {
 
 .tpl-card img {
   border-radius: 8px;
+  min-height: 0;
+  object-fit: contain;
 }
 
 .tpl-card .tpl-caption {
@@ -185,13 +207,21 @@ body {
 
 /* ===== Polaroid Template ===== */
 .tpl-polaroid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-height: 100%;
   background: #2c2c2c;
-  padding: 40px;
+  padding: 24px;
 }
 
 .tpl-polaroid-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: #fefefe;
-  padding: 12px 12px 0;
+  padding: 10px 10px 0;
   box-shadow:
     0 4px 8px rgba(0, 0, 0, 0.3),
     0 12px 24px rgba(0, 0, 0, 0.2);
@@ -200,14 +230,17 @@ body {
 
 .tpl-polaroid img {
   display: block;
+  min-height: 0;
+  object-fit: contain;
 }
 
 .tpl-polaroid-bottom {
-  height: 72px;
+  height: 56px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  padding: 6px 10px;
 }
 
 .tpl-polaroid .tpl-caption {
@@ -219,16 +252,20 @@ body {
 
 /* ===== Quote Template ===== */
 .tpl-quote {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
   background: var(--background);
-  padding: 32px;
+  padding: 24px;
 }
 
 .tpl-quote-text {
-  margin: 0 0 20px;
+  flex-shrink: 0;
+  margin: 0 0 16px;
   padding: 0 8px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.7;
+  line-height: 1.6;
   color: var(--foreground);
   border-left: 3px solid var(--accent);
   padding-left: 16px;
@@ -237,6 +274,8 @@ body {
 .tpl-quote img {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-height: 0;
+  object-fit: contain;
 }
 
 .tpl-quote-footer {
@@ -244,6 +283,36 @@ body {
   font-size: 12px;
   color: var(--muted-foreground);
   text-align: right;
+  min-height: 1em;
+}
+
+/* ===== Watermark ===== */
+.tpl-watermark {
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  text-align: right;
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.tpl-card .tpl-watermark {
+  margin-top: 10px;
+}
+
+.tpl-polaroid .tpl-watermark {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  margin: 0;
+  font-family: "Caveat", cursive, sans-serif;
+  font-size: 12px;
+  opacity: 0.4;
+}
+
+.tpl-polaroid-bottom {
+  position: relative;
 }
 
 /* ========== Share Controls ========== */
@@ -310,6 +379,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.watermark-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.watermark-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .share-hint {
