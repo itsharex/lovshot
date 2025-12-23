@@ -3,6 +3,15 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 
+const SHARE_TEMPLATES = [
+  { id: "caption_below", label: "标准" },
+  { id: "card", label: "卡片" },
+  { id: "minimal", label: "极简" },
+  { id: "social", label: "社交" },
+] as const;
+
+type TemplateId = typeof SHARE_TEMPLATES[number]["id"];
+
 export default function Preview() {
   const params = new URLSearchParams(window.location.search);
   const path = params.get("path") || "";
@@ -10,6 +19,8 @@ export default function Preview() {
   const isCaptionMode = mode === "caption";
 
   const [caption, setCaption] = useState("");
+  const [template, setTemplate] = useState<TemplateId>("caption_below");
+  const [composing, setComposing] = useState(false);
   const captionRef = useRef(caption);
   captionRef.current = caption;
 
@@ -44,16 +55,8 @@ export default function Preview() {
         }
       } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        console.log("[Preview] Cmd+Enter pressed, saving...");
-        const text = captionRef.current.trim();
-        if (text) {
-          invoke("save_caption", { path, caption: text }).catch(console.error);
-        }
-        try {
-          await getCurrentWindow().close();
-        } catch (err) {
-          console.error("[Preview] save close failed:", err);
-        }
+        // Trigger copy with current template
+        handleCopyComposed();
       }
     };
 
@@ -61,13 +64,58 @@ export default function Preview() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isCaptionMode, path]);
 
+  const handleCopyComposed = async () => {
+    if (composing) return;
+    const text = captionRef.current.trim();
+    if (!text) return;
+    setComposing(true);
+    try {
+      console.log("[Preview] Composing with template:", template);
+      await invoke("compose_share", {
+        sourcePath: path,
+        caption: text,
+        template,
+      });
+      console.log("[Preview] Share image composed and copied");
+    } catch (err) {
+      console.error("[Preview] compose_share failed:", err);
+    } finally {
+      setComposing(false);
+    }
+  };
+
   if (isCaptionMode) {
     return (
-      <div className="caption-container">
-        <div className="caption-image-wrapper" data-tauri-drag-region>
-          {path && <img src={convertFileSrc(path)} alt="Screenshot" />}
+      <div className={`share-preview template-${template}`}>
+        {/* Live preview area */}
+        <div className="share-preview-content" data-tauri-drag-region>
+          {template === "social" && caption && (
+            <div className="preview-caption-top">{caption}</div>
+          )}
+          <div className="preview-image-wrapper">
+            {path && <img src={convertFileSrc(path)} alt="Screenshot" />}
+          </div>
+          {template !== "social" && caption && (
+            <div className="preview-caption-bottom">{caption}</div>
+          )}
+          {template === "social" && (
+            <div className="preview-watermark">via lovshot</div>
+          )}
         </div>
-        <div className="caption-input-area">
+
+        {/* Bottom controls */}
+        <div className="share-controls">
+          <div className="template-tabs">
+            {SHARE_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                className={`template-tab${template === t.id ? " active" : ""}`}
+                onClick={() => setTemplate(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <textarea
             className="caption-input"
             placeholder="添加说明文字…"
@@ -79,8 +127,26 @@ export default function Preview() {
             }}
             autoFocus
           />
-          <div className="caption-shortcuts">
-            <kbd>↵</kbd> 换行 · <kbd>⌘</kbd><kbd>↵</kbd> 保存 · <kbd>esc</kbd> 跳过
+          <div className="share-footer">
+            <span className="share-hint">
+              <kbd>⌘</kbd><kbd>↵</kbd> 复制 · <kbd>esc</kbd> 关闭
+            </span>
+            <div className="share-actions">
+              <button
+                className="share-btn secondary"
+                onClick={() => invoke("copy_image_to_clipboard", { path })}
+                title="仅复制原图"
+              >
+                原图
+              </button>
+              <button
+                className="share-btn"
+                onClick={handleCopyComposed}
+                disabled={composing || !caption.trim()}
+              >
+                {composing ? "生成中…" : "复制"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

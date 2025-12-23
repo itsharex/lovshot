@@ -66,8 +66,8 @@ body {
   }
 }
 
-/* Caption Mode */
-.caption-container {
+/* Share Preview Mode */
+.share-preview {
   width: calc(100% - 16px);
   height: calc(100% - 16px);
   margin: 8px;
@@ -80,22 +80,30 @@ body {
   overflow: hidden;
 }
 
-.caption-image-wrapper {
+.share-preview-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: var(--muted);
+  cursor: grab;
+  overflow: hidden;
+}
+
+.share-preview-content:active {
+  cursor: grabbing;
+}
+
+.preview-image-wrapper {
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  background: var(--muted);
-  cursor: grab;
 }
 
-.caption-image-wrapper:active {
-  cursor: grabbing;
-}
-
-.caption-image-wrapper img {
+.preview-image-wrapper img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -103,9 +111,144 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.caption-input-area {
+.preview-caption-top,
+.preview-caption-bottom {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-caption-top {
+  margin-bottom: 12px;
+}
+
+.preview-caption-bottom {
+  margin-top: 12px;
+  font-style: italic;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.preview-watermark {
+  margin-top: 8px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+/* Template variants */
+.template-card .share-preview-content {
+  padding: 24px;
+}
+
+.template-card .preview-image-wrapper img {
+  border-radius: 12px;
+}
+
+.template-minimal .preview-caption-bottom {
+  font-size: 12px;
+  font-style: normal;
+}
+
+.template-social .share-preview-content {
+  background: var(--background);
+}
+
+.template-social .preview-caption-top {
+  font-size: 14px;
+  font-style: normal;
+}
+
+/* Share Controls */
+.share-controls {
   padding: 12px 16px 16px;
   background: var(--background);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-tabs {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+.template-tab {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.template-tab:hover {
+  color: var(--foreground);
+}
+
+.template-tab.active {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.share-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.share-hint {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.share-hint kbd {
+  display: inline-block;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--muted);
+  border-radius: 3px;
+  margin: 0 1px;
+}
+
+.share-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.share-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.share-btn.secondary {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.share-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.share-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .caption-input {
@@ -135,61 +278,4 @@ body {
   opacity: 0.7;
 }
 
-.caption-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
 
-.caption-shortcuts {
-  text-align: center;
-  font-size: 11px;
-  color: var(--muted-foreground);
-  opacity: 0.6;
-  margin-top: 12px;
-}
-
-.caption-shortcuts kbd {
-  display: inline-block;
-  padding: 2px 5px;
-  font-size: 10px;
-  font-family: inherit;
-  background: var(--muted);
-  border-radius: 3px;
-  margin: 0 1px;
-}
-
-.caption-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.caption-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.caption-btn-cancel {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.caption-btn-cancel:hover:not(:disabled) {
-  opacity: 0.8;
-}
-
-.caption-btn-save {
-  background: var(--foreground);
-  color: var(--background);
-}
-
-.caption-btn-save:hover:not(:disabled) {
-  opacity: 0.9;
-}

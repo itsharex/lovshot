@@ -19,6 +19,7 @@ mod commands;
 mod config;
 mod fft_match;
 mod permission;
+mod share_compose;
 mod shortcuts;
 mod state;
 mod tray;
@@ -224,6 +225,8 @@ pub fn run() {
             // Annotation commands
             commands::capture_region_preview,
             commands::save_annotated_screenshot,
+            // Share compose
+            share_compose::compose_share,
             // Debug commands
             commands::open_devtools,
             show_main_window,
