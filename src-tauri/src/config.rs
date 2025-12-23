@@ -54,6 +54,12 @@ pub struct AppConfig {
     pub scroll_capture_enabled: bool,
     #[serde(default = "default_screenshot_preview")]
     pub screenshot_preview_enabled: bool,
+    #[serde(default = "default_image_export_format")]
+    pub image_export_format: String, // "markdown", "html", "url_only"
+}
+
+fn default_image_export_format() -> String {
+    "markdown".to_string()
 }
 
 fn default_screenshot_preview() -> bool {
@@ -89,6 +95,7 @@ impl From<OldAppConfig> for AppConfig {
             autostart_enabled: old.autostart_enabled,
             scroll_capture_enabled: old.scroll_capture_enabled,
             screenshot_preview_enabled: old.screenshot_preview_enabled,
+            image_export_format: default_image_export_format(),
         }
     }
 }
@@ -184,6 +191,7 @@ impl Default for AppConfig {
             autostart_enabled: true,
             scroll_capture_enabled: false,
             screenshot_preview_enabled: true,
+            image_export_format: default_image_export_format(),
         }
     }
 }

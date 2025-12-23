@@ -16,6 +16,7 @@ interface AppConfig {
   autostart_enabled: boolean;
   scroll_capture_enabled: boolean;
   screenshot_preview_enabled: boolean;
+  image_export_format: string;
 }
 
 type EditingState = {
@@ -244,6 +245,16 @@ export default function Settings() {
     }
   }, [config]);
 
+  const handleImageExportFormatChange = useCallback(async (format: string) => {
+    if (!config) return;
+    try {
+      const newConfig = await invoke<AppConfig>("set_image_export_format", { format });
+      setConfig(newConfig);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [config]);
+
   const handleClose = useCallback(async () => {
     await getCurrentWindow().close();
   }, []);
@@ -366,7 +377,7 @@ export default function Settings() {
                   <span className="switch-thumb" />
                 </button>
               </div>
-              <div className="setting-row">
+              <div className="setting-row has-border">
                 <span className="setting-label">Screenshot Preview</span>
                 <button
                   role="switch"
@@ -376,6 +387,19 @@ export default function Settings() {
                 >
                   <span className="switch-thumb" />
                 </button>
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">Image Export Format</span>
+                <select
+                  className="setting-select"
+                  value={config.image_export_format}
+                  onChange={(e) => handleImageExportFormatChange(e.target.value)}
+                >
+                  <option value="markdown">Markdown ![alt](url)</option>
+                  <option value="writing">Writing (alt: ![](url))</option>
+                  <option value="html">HTML &lt;img&gt;</option>
+                  <option value="url_only">URL Only</option>
+                </select>
               </div>
             </div>
           </AccordionContent>

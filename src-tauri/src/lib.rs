@@ -180,6 +180,8 @@ pub fn run() {
             commands::set_developer_mode,
             commands::set_scroll_capture_enabled,
             commands::set_screenshot_preview_enabled,
+            commands::get_image_export_format,
+            commands::set_image_export_format,
             commands::start_recording,
             commands::stop_recording,
             commands::get_recording_info,
@@ -195,6 +197,14 @@ pub fn run() {
             commands::delete_file,
             commands::open_caption_editor,
             commands::copy_image_to_clipboard,
+            // Folder commands
+            commands::get_folders,
+            commands::create_folder,
+            commands::delete_folder,
+            commands::rename_folder,
+            commands::move_to_folder,
+            commands::export_folder_to_md,
+            commands::preview_folder_export,
             // Scroll capture commands
             commands::start_scroll_capture,
             commands::capture_scroll_frame_auto,

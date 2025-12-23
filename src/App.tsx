@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Masonry from "react-masonry-css";
+import ExportDialog from "./ExportDialog";
 import "./App.css";
 
 interface HistoryItem {
@@ -35,6 +36,12 @@ interface Stats {
   total_size: number;
   today_count: number;
   week_count: number;
+}
+
+interface FolderInfo {
+  name: string;
+  path: string;
+  file_count: number;
 }
 
 type FilterType = "all" | "screenshot" | "gif";
@@ -81,6 +88,15 @@ function App() {
   const loaderRef = useRef<HTMLDivElement>(null);
   const didDragRef = useRef(false); // Track if a valid drag occurred
   const isResizingRef = useRef(false);
+
+  // Folder state
+  const [folders, setFolders] = useState<FolderInfo[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null); // null = root
+  const [newFolderName, setNewFolderName] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: FolderInfo } | null>(null);
+  const [editingFolder, setEditingFolder] = useState<{ path: string; name: string } | null>(null);
+  const [exportDialog, setExportDialog] = useState<{ folderPath: string | null; folderName: string } | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -147,6 +163,15 @@ function App() {
     }
   }, []);
 
+  const loadFolders = useCallback(async () => {
+    try {
+      const res = await invoke<FolderInfo[]>("get_folders");
+      setFolders(res);
+    } catch (e) {
+      console.error("加载文件夹失败:", e);
+    }
+  }, []);
+
   const loadHistory = useCallback(async (reset = false) => {
     if (loading) return;
     setLoading(true);
@@ -157,6 +182,7 @@ function App() {
         offset,
         limit: PAGE_SIZE,
         filterType,
+        folder: selectedFolder,
       });
       setHistory(prev => reset ? res.items : [...prev, ...res.items]);
       setHasMore(res.has_more);
@@ -169,7 +195,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [history.length, loading, filter, isWideScreen]);
+  }, [history.length, loading, filter, isWideScreen, selectedFolder]);
 
   // 实时监听新截图/GIF 保存事件
   useEffect(() => {
@@ -283,9 +309,11 @@ function App() {
 
   useEffect(() => {
     loadStats();
+    loadFolders();
     loadHistory(true);
   }, []);
 
+  // Reload history when filter or folder changes
   useEffect(() => {
     setSelected(null);
     setLoading(true);
@@ -294,6 +322,7 @@ function App() {
       offset: 0,
       limit: PAGE_SIZE,
       filterType,
+      folder: selectedFolder,
     }).then(res => {
       setHistory(res.items);
       setHasMore(res.has_more);
@@ -305,7 +334,7 @@ function App() {
     }).finally(() => {
       setLoading(false);
     });
-  }, [filter]);
+  }, [filter, selectedFolder]);
 
   useEffect(() => {
     const loader = loaderRef.current;
@@ -506,9 +535,107 @@ function App() {
       setSelectedPaths(new Set());
       if (selected && pathSet.has(selected.path)) setSelected(null);
       loadStats();
+      loadFolders();
     } catch (e) {
       console.error("删除失败:", e);
     }
+  };
+
+  // Folder operations
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    try {
+      await invoke("create_folder", { name: newFolderName.trim() });
+      setNewFolderName("");
+      setIsCreatingFolder(false);
+      loadFolders();
+    } catch (e) {
+      console.error("创建文件夹失败:", e);
+    }
+  };
+
+  const handleMoveToFolder = async (folderPath: string | null) => {
+    if (!contextMenu) return;
+    const paths = contextMenu.items.map((i) => i.path);
+    closeContextMenu();
+    try {
+      await invoke("move_to_folder", { filePaths: paths, folderPath });
+      // Remove moved items from current view
+      const pathSet = new Set(paths);
+      setHistory((prev) => prev.filter((h) => !pathSet.has(h.path)));
+      setSelectedPaths(new Set());
+      if (selected && pathSet.has(selected.path)) setSelected(null);
+      loadFolders();
+    } catch (e) {
+      console.error("移动失败:", e);
+    }
+  };
+
+  // Folder menu handlers
+  const handleFolderMenuClick = (e: React.MouseEvent, folder: FolderInfo) => {
+    e.stopPropagation();
+    setFolderMenu({ x: e.clientX, y: e.clientY, folder });
+  };
+
+  const closeFolderMenu = () => setFolderMenu(null);
+
+  const handleStartRenameFolder = () => {
+    if (!folderMenu) return;
+    setEditingFolder({ path: folderMenu.folder.path, name: folderMenu.folder.name });
+    closeFolderMenu();
+  };
+
+  const handleRenameFolder = async () => {
+    if (!editingFolder || !editingFolder.name.trim()) return;
+    try {
+      await invoke("rename_folder", { path: editingFolder.path, newName: editingFolder.name.trim() });
+      // If renaming selected folder, update selection
+      if (selectedFolder === editingFolder.path) {
+        const newPath = editingFolder.path.replace(/[^/]+$/, editingFolder.name.trim());
+        setSelectedFolder(newPath);
+      }
+      loadFolders();
+    } catch (e) {
+      console.error("重命名失败:", e);
+    } finally {
+      setEditingFolder(null);
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!folderMenu) return;
+    const folderPath = folderMenu.folder.path;
+    closeFolderMenu();
+    try {
+      await invoke("delete_folder", { path: folderPath });
+      if (selectedFolder === folderPath) {
+        setSelectedFolder(null);
+      }
+      loadFolders();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("not empty")) {
+        alert("文件夹不为空，无法删除");
+      } else {
+        console.error("删除失败:", e);
+      }
+    }
+  };
+
+  const handleExportFolderToMd = () => {
+    if (!folderMenu) return;
+    const { path, name } = folderMenu.folder;
+    closeFolderMenu();
+    setExportDialog({ folderPath: path, folderName: name });
+  };
+
+  const handleExportDialogClose = () => {
+    setExportDialog(null);
+  };
+
+  const handleExported = async (path: string) => {
+    setExportDialog(null);
+    await invoke("reveal_in_folder", { path });
   };
 
   // Close context menu on click outside
@@ -519,6 +646,15 @@ function App() {
       return () => window.removeEventListener("click", handleClick);
     }
   }, [contextMenu]);
+
+  // Close folder menu on click outside
+  useEffect(() => {
+    const handleClick = () => closeFolderMenu();
+    if (folderMenu) {
+      window.addEventListener("click", handleClick);
+      return () => window.removeEventListener("click", handleClick);
+    }
+  }, [folderMenu]);
 
   return (
     <main className={`dashboard ${isWideScreen ? "gallery-mode" : ""}`}>
@@ -552,6 +688,85 @@ function App() {
             </div>
           </>
         )}
+
+        {/* Folder List */}
+        <div className="folder-section">
+          <div className="folder-header">
+            <span className="folder-title">文件夹</span>
+            <button
+              className="folder-add-btn"
+              onClick={() => setIsCreatingFolder(true)}
+              title="新建文件夹"
+            >
+              +
+            </button>
+          </div>
+          {isCreatingFolder && (
+            <div className="folder-create">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateFolder();
+                  if (e.key === "Escape") {
+                    setIsCreatingFolder(false);
+                    setNewFolderName("");
+                  }
+                }}
+                placeholder="文件夹名称"
+                autoFocus
+              />
+              <button onClick={handleCreateFolder}>创建</button>
+              <button onClick={() => { setIsCreatingFolder(false); setNewFolderName(""); }}>取消</button>
+            </div>
+          )}
+          <div className="folder-list">
+            <div
+              className={`folder-item ${selectedFolder === null ? "active" : ""}`}
+              onClick={() => setSelectedFolder(null)}
+            >
+              <span className="folder-icon">🏠</span>
+              <span className="folder-name">全部文件</span>
+            </div>
+            {folders.map((folder) => (
+              <div
+                key={folder.path}
+                className={`folder-item ${selectedFolder === folder.path ? "active" : ""}`}
+                onClick={() => !editingFolder && setSelectedFolder(folder.path)}
+              >
+                <span className="folder-icon">📁</span>
+                {editingFolder?.path === folder.path ? (
+                  <input
+                    type="text"
+                    className="folder-rename-input"
+                    value={editingFolder.name}
+                    onChange={(e) => setEditingFolder({ ...editingFolder, name: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleRenameFolder();
+                      if (e.key === "Escape") setEditingFolder(null);
+                    }}
+                    onBlur={handleRenameFolder}
+                    onClick={(e) => e.stopPropagation()}
+                    autoFocus
+                  />
+                ) : (
+                  <>
+                    <span className="folder-name">{folder.name}</span>
+                    <span className="folder-count">{folder.file_count}</span>
+                    <button
+                      className="folder-menu-btn"
+                      onClick={(e) => handleFolderMenuClick(e, folder)}
+                      title="更多操作"
+                    >
+                      ⋯
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className="history-section">
           <div className="history-header">
@@ -718,9 +933,46 @@ function App() {
           {contextMenu.items.length === 1 && (
             <button onClick={handleMenuEditCaption}>编辑描述</button>
           )}
+          {/* Move to folder submenu */}
+          <div className="context-menu-submenu">
+            <button className="submenu-trigger">
+              移动到文件夹 <span className="submenu-arrow">▶</span>
+            </button>
+            <div className="submenu-content">
+              {selectedFolder !== null && (
+                <button onClick={() => handleMoveToFolder(null)}>
+                  🏠 根目录
+                </button>
+              )}
+              {folders.filter(f => f.path !== selectedFolder).map((folder) => (
+                <button key={folder.path} onClick={() => handleMoveToFolder(folder.path)}>
+                  📁 {folder.name}
+                </button>
+              ))}
+              {folders.length === 0 && selectedFolder === null && (
+                <div className="submenu-empty">暂无文件夹</div>
+              )}
+            </div>
+          </div>
           <div className="context-menu-divider" />
           <button className="danger" onClick={handleMenuDelete}>
             删除{contextMenu.items.length > 1 ? ` (${contextMenu.items.length})` : ""}
+          </button>
+        </div>
+      )}
+
+      {/* Folder Menu */}
+      {folderMenu && (
+        <div
+          className="context-menu folder-menu"
+          style={{ left: folderMenu.x, top: folderMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={handleStartRenameFolder}>重命名</button>
+          <button onClick={handleExportFolderToMd}>导出为 Markdown</button>
+          <div className="context-menu-divider" />
+          <button className="danger" onClick={handleDeleteFolder}>
+            删除文件夹
           </button>
         </div>
       )}
@@ -730,6 +982,16 @@ function App() {
         const style = getSelectionBoxStyle();
         return style && <div className="selection-box" style={style} />;
       })()}
+
+      {/* Export Dialog */}
+      {exportDialog && (
+        <ExportDialog
+          folderPath={exportDialog.folderPath}
+          folderName={exportDialog.folderName}
+          onClose={handleExportDialogClose}
+          onExported={handleExported}
+        />
+      )}
     </main>
   );
 }

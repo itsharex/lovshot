@@ -144,3 +144,20 @@ pub fn set_autostart_enabled(app: AppHandle, enabled: bool) -> Result<AppConfig,
     config::save_config(&cfg)?;
     Ok(cfg)
 }
+
+#[tauri::command]
+pub fn get_image_export_format() -> String {
+    config::load_config().image_export_format
+}
+
+#[tauri::command]
+pub fn set_image_export_format(format: String) -> Result<AppConfig, String> {
+    // Validate format
+    if !["markdown", "writing", "html", "url_only"].contains(&format.as_str()) {
+        return Err("Invalid format. Must be 'markdown', 'writing', 'html', or 'url_only'".to_string());
+    }
+    let mut cfg = config::load_config();
+    cfg.image_export_format = format;
+    config::save_config(&cfg)?;
+    Ok(cfg)
+}

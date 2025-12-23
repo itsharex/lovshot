@@ -686,14 +686,18 @@ pub async fn get_history(
     offset: Option<usize>,
     limit: Option<usize>,
     filter_type: Option<String>,
+    folder: Option<String>,
 ) -> Result<HistoryResponse, String> {
     tokio::task::spawn_blocking(move || {
-        let output_dir = dirs::picture_dir()
-            .or_else(|| dirs::home_dir())
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("lovshot");
+        let base_dir = get_lovshot_dir();
 
-        if !output_dir.exists() {
+        // If folder specified, use that; otherwise use root (but only root-level files)
+        let scan_dir = match &folder {
+            Some(f) if !f.is_empty() => PathBuf::from(f),
+            _ => base_dir.clone(),
+        };
+
+        if !scan_dir.exists() {
             return Ok(HistoryResponse {
                 items: vec![],
                 has_more: false,
@@ -702,7 +706,7 @@ pub async fn get_history(
         }
 
         // Step 1: Collect file metadata only (no thumbnail generation)
-        let entries = std::fs::read_dir(&output_dir).map_err(|e| e.to_string())?;
+        let entries = std::fs::read_dir(&scan_dir).map_err(|e| e.to_string())?;
         let mut files: Vec<FileInfo> = vec![];
 
         for entry in entries.flatten() {
@@ -992,6 +996,318 @@ pub fn delete_file(path: String) -> Result<(), String> {
     trash::delete(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
     println!("[delete_file] Moved to trash: {}", path);
     Ok(())
+}
+
+// ============ Folder Management ============
+
+#[derive(serde::Serialize)]
+pub struct FolderInfo {
+    pub name: String,
+    pub path: String,
+    pub file_count: usize,
+}
+
+fn get_lovshot_dir() -> PathBuf {
+    dirs::picture_dir()
+        .or_else(|| dirs::home_dir())
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovshot")
+}
+
+#[tauri::command]
+pub fn get_folders() -> Result<Vec<FolderInfo>, String> {
+    let base_dir = get_lovshot_dir();
+    if !base_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let entries = std::fs::read_dir(&base_dir).map_err(|e| e.to_string())?;
+    let mut folders = vec![];
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Skip hidden folders
+        if name.starts_with('.') {
+            continue;
+        }
+
+        // Count image files in folder
+        let file_count = std::fs::read_dir(&path)
+            .map(|entries| {
+                entries.flatten().filter(|e| {
+                    let p = e.path();
+                    if !p.is_file() { return false; }
+                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif")
+                }).count()
+            })
+            .unwrap_or(0);
+
+        folders.push(FolderInfo {
+            name,
+            path: path.to_string_lossy().to_string(),
+            file_count,
+        });
+    }
+
+    folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(folders)
+}
+
+#[tauri::command]
+pub fn create_folder(name: String) -> Result<FolderInfo, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Folder name cannot be empty".to_string());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("Folder name cannot contain path separators".to_string());
+    }
+
+    let base_dir = get_lovshot_dir();
+    std::fs::create_dir_all(&base_dir).map_err(|e| e.to_string())?;
+
+    let folder_path = base_dir.join(name);
+    if folder_path.exists() {
+        return Err("Folder already exists".to_string());
+    }
+
+    std::fs::create_dir(&folder_path).map_err(|e| e.to_string())?;
+    println!("[create_folder] Created: {:?}", folder_path);
+
+    Ok(FolderInfo {
+        name: name.to_string(),
+        path: folder_path.to_string_lossy().to_string(),
+        file_count: 0,
+    })
+}
+
+#[tauri::command]
+pub fn delete_folder(path: String) -> Result<(), String> {
+    let folder_path = PathBuf::from(&path);
+    if !folder_path.exists() {
+        return Err("Folder not found".to_string());
+    }
+    if !folder_path.is_dir() {
+        return Err("Not a folder".to_string());
+    }
+
+    // Check if folder is empty (except hidden files)
+    let has_files = std::fs::read_dir(&folder_path)
+        .map(|entries| {
+            entries.flatten().any(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                !name.starts_with('.')
+            })
+        })
+        .unwrap_or(false);
+
+    if has_files {
+        return Err("Folder is not empty".to_string());
+    }
+
+    std::fs::remove_dir_all(&folder_path).map_err(|e| e.to_string())?;
+    println!("[delete_folder] Deleted: {:?}", folder_path);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rename_folder(path: String, new_name: String) -> Result<FolderInfo, String> {
+    let new_name = new_name.trim();
+    if new_name.is_empty() {
+        return Err("Folder name cannot be empty".to_string());
+    }
+    if new_name.contains('/') || new_name.contains('\\') {
+        return Err("Folder name cannot contain path separators".to_string());
+    }
+
+    let old_path = PathBuf::from(&path);
+    if !old_path.exists() || !old_path.is_dir() {
+        return Err("Folder not found".to_string());
+    }
+
+    let parent = old_path.parent().ok_or("Invalid folder path")?;
+    let new_path = parent.join(new_name);
+
+    if new_path.exists() {
+        return Err("A folder with this name already exists".to_string());
+    }
+
+    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    println!("[rename_folder] Renamed {:?} -> {:?}", old_path, new_path);
+
+    let file_count = std::fs::read_dir(&new_path)
+        .map(|entries| {
+            entries.flatten().filter(|e| {
+                let p = e.path();
+                if !p.is_file() { return false; }
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif")
+            }).count()
+        })
+        .unwrap_or(0);
+
+    Ok(FolderInfo {
+        name: new_name.to_string(),
+        path: new_path.to_string_lossy().to_string(),
+        file_count,
+    })
+}
+
+#[tauri::command]
+pub fn move_to_folder(file_paths: Vec<String>, folder_path: Option<String>) -> Result<Vec<String>, String> {
+    let base_dir = get_lovshot_dir();
+    let target_dir = match folder_path {
+        Some(ref p) if !p.is_empty() => PathBuf::from(p),
+        _ => base_dir.clone(), // Move to root if no folder specified
+    };
+
+    if !target_dir.exists() {
+        return Err("Target folder not found".to_string());
+    }
+
+    let mut new_paths = vec![];
+    for file_path in file_paths {
+        let src = PathBuf::from(&file_path);
+        if !src.exists() {
+            continue;
+        }
+
+        let filename = src.file_name().ok_or("Invalid filename")?;
+        let dest = target_dir.join(filename);
+
+        // Skip if already in target folder
+        if src == dest {
+            new_paths.push(file_path);
+            continue;
+        }
+
+        // Handle name conflict
+        let final_dest = if dest.exists() {
+            let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+            let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let mut counter = 1;
+            loop {
+                let new_name = if ext.is_empty() {
+                    format!("{}_{}", stem, counter)
+                } else {
+                    format!("{}_{}.{}", stem, counter, ext)
+                };
+                let candidate = target_dir.join(&new_name);
+                if !candidate.exists() {
+                    break candidate;
+                }
+                counter += 1;
+            }
+        } else {
+            dest
+        };
+
+        std::fs::rename(&src, &final_dest).map_err(|e| e.to_string())?;
+        println!("[move_to_folder] Moved {:?} -> {:?}", src, final_dest);
+        new_paths.push(final_dest.to_string_lossy().to_string());
+    }
+
+    Ok(new_paths)
+}
+
+/// Preview export content without saving
+#[tauri::command]
+pub fn preview_folder_export(folder_path: Option<String>, format: String) -> Result<String, String> {
+    let base_dir = get_lovshot_dir();
+    let scan_dir = match &folder_path {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => base_dir.clone(),
+    };
+
+    if !scan_dir.exists() {
+        return Err("Folder not found".to_string());
+    }
+
+    // Collect image files
+    let entries = std::fs::read_dir(&scan_dir).map_err(|e| e.to_string())?;
+    let mut files: Vec<(PathBuf, String, u64)> = vec![];
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif") {
+            continue;
+        }
+
+        let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        let modified = entry.metadata()
+            .and_then(|m| m.modified())
+            .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+            .unwrap_or(0);
+
+        files.push((path, filename, modified));
+    }
+
+    // Sort by modified time ascending (oldest first)
+    files.sort_by(|a, b| a.2.cmp(&b.2));
+
+    // Generate content
+    let mut lines: Vec<String> = vec![];
+
+    for (path, filename, _) in &files {
+        let caption = read_finder_comment(&path.to_string_lossy());
+        let alt_text = caption.as_deref().unwrap_or(filename);
+        let path_str = path.to_string_lossy();
+
+        let image_ref = match format.as_str() {
+            "writing" => format!("{}：\n\n![]({})", alt_text, path_str),
+            "html" => format!("<img src=\"{}\" alt=\"{}\" />", path_str, alt_text),
+            "url_only" => path_str.to_string(),
+            _ => format!("![{}]({})", alt_text, path_str),
+        };
+
+        lines.push(image_ref);
+    }
+
+    Ok(lines.join("\n\n"))
+}
+
+#[tauri::command]
+pub fn export_folder_to_md(folder_path: Option<String>, format: String) -> Result<String, String> {
+    let base_dir = get_lovshot_dir();
+    let scan_dir = match &folder_path {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => base_dir.clone(),
+    };
+
+    if !scan_dir.exists() {
+        return Err("Folder not found".to_string());
+    }
+
+    let folder_name = scan_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("lovshot");
+
+    // Generate content using preview function
+    let md_content = preview_folder_export(folder_path, format)?;
+
+    // Save to folder
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let md_filename = scan_dir.join(format!("{}_export_{}.md", folder_name, timestamp));
+    std::fs::write(&md_filename, &md_content).map_err(|e| e.to_string())?;
+
+    println!("[export_folder_to_md] Exported to {:?}", md_filename);
+    Ok(md_filename.to_string_lossy().to_string())
 }
 
 #[tauri::command]
