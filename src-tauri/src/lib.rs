@@ -10,6 +10,8 @@ mod macos_menu_tracking;
 #[cfg(target_os = "macos")]
 mod native_screenshot;
 #[cfg(target_os = "macos")]
+mod scroll_event;
+#[cfg(target_os = "macos")]
 mod window_detect;
 
 mod capture;
@@ -93,6 +95,8 @@ pub fn run() {
                                 s.scroll_offsets.clear();
                                 s.scroll_stitched = None;
                             }
+                            #[cfg(target_os = "macos")]
+                            crate::scroll_event::stop_scroll_listener();
 
                             // IMPORTANT: Do NOT call unregister() here - it causes deadlock!
                             // The shortcut handler callback cannot call unregister() on itself.

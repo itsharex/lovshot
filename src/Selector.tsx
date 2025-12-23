@@ -298,21 +298,10 @@ export default function Selector() {
       console.log("[Selector] 进入 scroll 模式");
 
       try {
-        // 调用后端初始化滚动捕获，返回首帧预览
-        const result = await invoke<{ frame_count: number; total_height: number; preview_base64: string }>(
-          "start_scroll_capture"
-        );
-
-        // 设置窗口鼠标穿透，让用户可以滚动底层窗口
-        await invoke("set_selector_mouse_passthrough", { enabled: true });
-
-        setScrollCaptureActive(true);
-        setScrollPreview(result.preview_base64);
-        setScrollFrameCount(result.frame_count);
-        setScrollTotalHeight(result.total_height);
-        setShowToolbar(false); // 隐藏工具栏，显示滚动捕获UI
+        await invoke("open_scroll_overlay", { region });
+        await closeWindow();
       } catch (e) {
-        console.error("[Selector] Failed to start scroll capture:", e);
+        console.error("[Selector] Failed to open scroll overlay:", e);
       }
     }
   }, [selectionRect, mode, closeWindow, isEditing, editor.annotations.length, captionEnabled]);
@@ -490,17 +479,13 @@ export default function Selector() {
             width: Math.round(w),
             height: Math.round(h),
           };
-          invoke("set_region", { region }).then(() => {
-            invoke<{ frame_count: number; total_height: number; preview_base64: string }>("start_scroll_capture")
-              .then(async (result) => {
-                await invoke("set_selector_mouse_passthrough", { enabled: true });
-                setScrollCaptureActive(true);
-                setScrollPreview(result.preview_base64);
-                setScrollFrameCount(result.frame_count);
-                setScrollTotalHeight(result.total_height);
-              })
-              .catch((e) => console.error("[Selector] Failed to start scroll capture:", e));
-          });
+          try {
+            await invoke("set_region", { region });
+            await invoke("open_scroll_overlay", { region });
+            await closeWindow();
+          } catch (e) {
+            console.error("[Selector] Failed to open scroll overlay:", e);
+          }
         } else {
           setShowToolbar(true);
         }
@@ -544,17 +529,13 @@ export default function Selector() {
               width: Math.round(windowInfo.width),
               height: Math.round(finalH),
             };
-            invoke("set_region", { region }).then(() => {
-              invoke<{ frame_count: number; total_height: number; preview_base64: string }>("start_scroll_capture")
-                .then(async (result) => {
-                  await invoke("set_selector_mouse_passthrough", { enabled: true });
-                  setScrollCaptureActive(true);
-                  setScrollPreview(result.preview_base64);
-                  setScrollFrameCount(result.frame_count);
-                  setScrollTotalHeight(result.total_height);
-                })
-                .catch((e) => console.error("[Selector] Failed to start scroll capture:", e));
-            });
+            try {
+              await invoke("set_region", { region });
+              await invoke("open_scroll_overlay", { region });
+              await closeWindow();
+            } catch (e) {
+              console.error("[Selector] Failed to open scroll overlay:", e);
+            }
           } else {
             setShowToolbar(true);
           }
@@ -563,7 +544,7 @@ export default function Selector() {
         }
       }
     },
-    [isSelecting, resizeDir, isDragging, excludeTitlebar, mode]
+    [isSelecting, resizeDir, isDragging, excludeTitlebar, mode, closeWindow]
   );
 
   // Re-calculate selection when excludeTitlebar changes (only for window selections)
@@ -718,7 +699,8 @@ export default function Selector() {
       }
     : {};
 
-  const showCrosshair = showHint && !isSelecting && !showToolbar && mousePos;
+  const scrollCaptureUiActive = scrollCaptureActive || (mode === "scroll" && selectionRect);
+  const showCrosshair = showHint && !isSelecting && !showToolbar && mousePos && !scrollCaptureUiActive;
   // 窗口高亮在拖拽时保持显示作为参考，只有确认选区后才消失
   const showWindowHighlight = !showToolbar && !selectionRect && hoveredWindow;
   const isStaticMode = mode === "staticimage";
@@ -749,7 +731,7 @@ export default function Selector() {
         </>
       )}
       {/* Magnifier - 在选区确认前显示，滚动模式下隐藏 */}
-      {!showToolbar && !isEditing && !scrollCaptureActive && mousePos && magnifierReady && (
+      {!showToolbar && !isEditing && !scrollCaptureUiActive && mousePos && magnifierReady && (
         <Magnifier
           cursorX={mousePos.x}
           cursorY={mousePos.y}

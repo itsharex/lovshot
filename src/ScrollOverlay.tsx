@@ -24,6 +24,7 @@ type Edge = "top" | "bottom" | "left" | "right";
 export default function ScrollOverlay() {
   const [progress, setProgress] = useState<ScrollCaptureProgress | null>(null);
   const [isStopped, setIsStopped] = useState(false);
+  const [pollingEnabled, setPollingEnabled] = useState(true);
   const [crop, setCrop] = useState<CropEdges>({ top: 0, bottom: 0, left: 0, right: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<Edge | null>(null);
@@ -35,6 +36,23 @@ export default function ScrollOverlay() {
       setProgress(event.payload);
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Switch between event-driven and polling modes
+  useEffect(() => {
+    const unlistenStarted = listen("scroll-listener-started", () => {
+      console.log("[ScrollOverlay] Scroll listener active, disable polling");
+      setPollingEnabled(false);
+    });
+    const unlistenFailed = listen("scroll-listener-failed", () => {
+      console.warn("[ScrollOverlay] Scroll listener failed, fallback to polling");
+      setPollingEnabled(true);
+    });
+
+    return () => {
+      unlistenStarted.then(fn => fn());
+      unlistenFailed.then(fn => fn());
+    };
   }, []);
 
   // Poll for scroll changes
@@ -64,9 +82,11 @@ export default function ScrollOverlay() {
         .catch(() => {});
     }
 
+    if (!pollingEnabled) return;
+
     const intervalId = setInterval(pollCapture, POLL_INTERVAL);
     return () => clearInterval(intervalId);
-  }, [isStopped, progress]);
+  }, [isStopped, progress, pollingEnabled]);
 
   // Centralized close function to prevent double-close
   const closeAndCancel = useCallback(async () => {

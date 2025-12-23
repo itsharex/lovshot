@@ -17,7 +17,13 @@ pub struct MatchResult {
 }
 
 /// Detect scroll delta between two frames using FFT-accelerated matching
-pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
+/// expected_direction: 1 = down, -1 = up, 0 = unknown
+pub fn detect_scroll_delta_fft(
+    prev: &RgbaImage,
+    curr: &RgbaImage,
+    expected_direction: i32,
+    max_delta: Option<i32>,
+) -> i32 {
     let (w, h) = prev.dimensions();
     let (w2, h2) = curr.dimensions();
 
@@ -30,8 +36,11 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     let curr_gray = to_grayscale(curr);
 
     // Search range: up to half height or 300px
-    let search_range = (h as i32 / 2).min(300);
-    let min_delta = 10;
+    let min_delta = 2;
+    let mut search_range = (h as i32 / 2).min(300);
+    if let Some(max_delta) = max_delta {
+        search_range = search_range.min(max_delta.max(min_delta));
+    }
 
     // Template: use a horizontal strip from the middle of prev frame
     let strip_height = 40u32;
@@ -50,7 +59,7 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     let avg_diff = no_scroll_diff / pixel_count;
 
     // If very similar without offset, no scroll detected
-    if avg_diff < 5.0 {
+    if avg_diff < 3.0 {
         return 0;
     }
 
@@ -59,51 +68,65 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     let mut best_score = f32::MAX;
 
     // Use coarse-to-fine search for speed
-    // First pass: step by 8
-    for offset in (min_delta..=search_range).step_by(8) {
-        // Scroll down: template from prev matches higher position in curr
-        if template_y as i32 + offset < h as i32 - strip_height as i32 {
-            let diff = compute_strip_diff(
-                &prev_gray,
-                &curr_gray,
-                template_y,
-                (template_y as i32 + offset) as u32,
-                w,
-                strip_height,
-            );
-            if diff < best_score {
-                best_score = diff;
-                best_offset = offset;
+    // First pass: step by 4 (better for smooth scrolling)
+    for offset in (min_delta..=search_range).step_by(4) {
+        if expected_direction >= 0 {
+            // Scroll down: content moves up, so template matches HIGHER in curr
+            if template_y as i32 - offset >= 0 {
+                let diff = compute_strip_diff(
+                    &prev_gray,
+                    &curr_gray,
+                    template_y,
+                    (template_y as i32 - offset) as u32,
+                    w,
+                    strip_height,
+                );
+                if diff < best_score {
+                    best_score = diff;
+                    best_offset = offset;
+                }
             }
         }
 
-        // Scroll up: template from prev matches lower position in curr
-        if template_y as i32 - offset >= 0 {
-            let diff = compute_strip_diff(
-                &prev_gray,
-                &curr_gray,
-                template_y,
-                (template_y as i32 - offset) as u32,
-                w,
-                strip_height,
-            );
-            if diff < best_score {
-                best_score = diff;
-                best_offset = -offset;
+        if expected_direction <= 0 {
+            // Scroll up: content moves down, so template matches LOWER in curr
+            if template_y as i32 + offset < h as i32 - strip_height as i32 {
+                let diff = compute_strip_diff(
+                    &prev_gray,
+                    &curr_gray,
+                    template_y,
+                    (template_y as i32 + offset) as u32,
+                    w,
+                    strip_height,
+                );
+                if diff < best_score {
+                    best_score = diff;
+                    best_offset = -offset;
+                }
             }
         }
     }
 
+    if best_offset == 0 {
+        return 0;
+    }
+
     // Refine around best coarse match
-    let refine_start = (best_offset.abs() - 8).max(min_delta);
-    let refine_end = (best_offset.abs() + 8).min(search_range);
-    let direction = if best_offset >= 0 { 1 } else { -1 };
+    let refine_start = (best_offset.abs() - 4).max(min_delta);
+    let refine_end = (best_offset.abs() + 4).min(search_range);
+    let direction = if expected_direction != 0 {
+        expected_direction
+    } else if best_offset >= 0 {
+        1
+    } else {
+        -1
+    };
 
     for offset in refine_start..=refine_end {
         let search_y = if direction > 0 {
-            template_y as i32 + offset
-        } else {
             template_y as i32 - offset
+        } else {
+            template_y as i32 + offset
         };
 
         if search_y >= 0 && search_y < h as i32 - strip_height as i32 {
@@ -127,7 +150,7 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     let improvement = avg_diff / match_avg.max(0.001);
 
     // Require significant improvement and reasonable match quality
-    if improvement < 2.0 || match_avg > 30.0 {
+    if improvement < 1.5 || match_avg > 40.0 {
         return 0;
     }
 
@@ -139,7 +162,7 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     };
 
     let verify_search_y =
-        (verify_y as i32 + best_offset).clamp(0, h as i32 - strip_height as i32) as u32;
+        (verify_y as i32 - best_offset).clamp(0, h as i32 - strip_height as i32) as u32;
     let verify_diff = compute_strip_diff(
         &prev_gray,
         &curr_gray,
@@ -151,7 +174,7 @@ pub fn detect_scroll_delta_fft(prev: &RgbaImage, curr: &RgbaImage) -> i32 {
     let verify_avg = verify_diff / pixel_count;
 
     // If verification strip also matches well, we're confident
-    if verify_avg > 40.0 {
+    if verify_avg > 55.0 {
         return 0;
     }
 

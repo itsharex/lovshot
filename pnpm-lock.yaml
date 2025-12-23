@@ -38,6 +38,9 @@ importers:
       react-konva:
         specifier: ^19.2.1
         version: 19.2.1(@types/react@19.2.7)(konva@10.0.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      react-masonry-css:
+        specifier: ^1.0.16
+        version: 1.0.16(react@19.2.3)
     devDependencies:
       '@changesets/cli':
         specifier: ^2.29.8
@@ -1187,6 +1190,11 @@ packages:
       konva: ^8.0.1 || ^7.2.5 || ^9.0.0 || ^10.0.0
       react: ^19.2.0
       react-dom: ^19.2.0
+
+  react-masonry-css@1.0.16:
+    resolution: {integrity: sha512-KSW0hR2VQmltt/qAa3eXOctQDyOu7+ZBevtKgpNDSzT7k5LA/0XntNa9z9HKCdz3QlxmJHglTZ18e4sX4V8zZQ==}
+    peerDependencies:
+      react: '>=16.0.0'
 
   react-reconciler@0.33.0:
     resolution: {integrity: sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA==}
@@ -2447,6 +2455,10 @@ snapshots:
       scheduler: 0.27.0
     transitivePeerDependencies:
       - '@types/react'
+
+  react-masonry-css@1.0.16(react@19.2.3):
+    dependencies:
+      react: 19.2.3
 
   react-reconciler@0.33.0(react@19.2.3):
     dependencies:

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import Masonry from "react-masonry-css";
 import "./App.css";
 
 interface HistoryItem {
@@ -584,7 +585,11 @@ function App() {
                 <p className="empty-hint">使用快捷键开始截图吧</p>
               </div>
             ) : (
-              <div className="history-grid">
+              <Masonry
+                breakpointCols={{ default: 3, 380: 4, 320: 3, 280: 2 }}
+                className="history-grid"
+                columnClassName="history-grid-column"
+              >
                 {history.map((item) => (
                   <div
                     key={item.path}
@@ -612,7 +617,7 @@ function App() {
                     )}
                   </div>
                 ))}
-              </div>
+              </Masonry>
             )}
 
             {hasMore && (

@@ -9,9 +9,10 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::fft_match::detect_scroll_delta_fft;
+#[cfg(target_os = "macos")]
+use crate::scroll_event::{start_scroll_listener, stop_scroll_listener};
 use crate::shortcuts::register_stop_scroll_shortcuts;
 use crate::state::SharedState;
-use crate::tray::create_recording_overlay;
 use crate::types::{CropEdges, Region, ScrollCaptureProgress};
 
 /// Internal function to capture initial scroll frame
@@ -134,10 +135,10 @@ pub fn capture_scroll_frame_auto(
         .ok_or("Failed to convert image")?;
 
     // Detect scroll direction and amount using FFT-based matching (expensive!)
-    let scroll_delta = detect_scroll_delta_fft(&last_frame, &new_frame);
+    let scroll_delta = detect_scroll_delta_fft(&last_frame, &new_frame, 0, None);
 
-    // If no significant scroll detected, don't refresh preview (keeps UI stable)
-    if scroll_delta.abs() < 10 {
+    // If no scroll detected, don't refresh preview (keeps UI stable)
+    if scroll_delta == 0 {
         return Ok(None);
     }
 
@@ -230,6 +231,9 @@ pub fn finish_scroll_capture(
     path: String,
     crop: Option<CropEdges>,
 ) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    stop_scroll_listener();
+
     let mut s = state.lock().unwrap();
     let stitched = s.scroll_stitched.take().ok_or("No stitched image")?;
 
@@ -256,6 +260,8 @@ pub fn finish_scroll_capture(
 #[tauri::command]
 pub fn stop_scroll_capture(app: AppHandle, state: tauri::State<SharedState>) {
     println!("[DEBUG][shortcut] 停止滚动截图");
+    #[cfg(target_os = "macos")]
+    stop_scroll_listener();
     let mut s = state.lock().unwrap();
     s.scroll_capturing = false;
 
@@ -268,6 +274,8 @@ pub fn stop_scroll_capture(app: AppHandle, state: tauri::State<SharedState>) {
 /// Cancel scroll capture
 #[tauri::command]
 pub fn cancel_scroll_capture(app: AppHandle, state: tauri::State<SharedState>) {
+    #[cfg(target_os = "macos")]
+    stop_scroll_listener();
     let mut s = state.lock().unwrap();
     s.scroll_capturing = false;
     s.scroll_frames.clear();
@@ -283,7 +291,7 @@ pub fn cancel_scroll_capture(app: AppHandle, state: tauri::State<SharedState>) {
 /// Stitch two images based on scroll delta
 /// scroll_delta > 0: scrolled down, new content at bottom
 /// scroll_delta < 0: scrolled up, new content at top
-fn stitch_scroll_image(
+pub fn stitch_scroll_image(
     base: &RgbaImage,
     new_frame: &RgbaImage,
     scroll_delta: i32,
@@ -399,7 +407,7 @@ fn apply_crop(img: &RgbaImage, crop: Option<CropEdges>) -> Result<RgbaImage, Str
 }
 
 /// Generate a preview image as base64 JPEG (fast), scaled to fit max_height
-fn generate_preview_base64(img: &RgbaImage, max_height: u32) -> Result<String, String> {
+pub fn generate_preview_base64(img: &RgbaImage, max_height: u32) -> Result<String, String> {
     let (w, h) = img.dimensions();
 
     // Downscale to max_height for UI preview (trade a bit of CPU for readability)
@@ -449,6 +457,10 @@ pub fn open_scroll_overlay(
     if let Some(win) = app.get_webview_window("scroll-overlay") {
         let _ = win.close();
     }
+    // Ensure border overlay is not visible during scroll capture
+    if let Some(overlay) = app.get_webview_window("recording-overlay") {
+        let _ = overlay.close();
+    }
 
     // Get screen info for positioning
     let screens = Screen::all().map_err(|e| e.to_string())?;
@@ -485,10 +497,6 @@ pub fn open_scroll_overlay(
     println!("[DEBUG][open_scroll_overlay] 注册 stop_scroll 快捷键");
     register_stop_scroll_shortcuts(&app);
     println!("[DEBUG][open_scroll_overlay] 快捷键注册完成");
-
-    // Show region indicator overlay FIRST (reuse recording overlay window in static mode)
-    // This ensures the selection border appears immediately
-    create_recording_overlay(&app, &region, true);
 
     // Build window WITHOUT focus - critical for scroll events to pass through
     // Create window BEFORE capturing to reduce perceived latency
@@ -567,6 +575,13 @@ pub fn open_scroll_overlay(
         let center_x = region.x as f64 + region.width as f64 / 2.0;
         let center_y = region.y as f64 + region.height as f64 / 2.0;
         crate::window_detect::activate_window_at_position(center_x, center_y);
+    }
+
+    // Start event-driven scroll listener (macOS)
+    #[cfg(target_os = "macos")]
+    {
+        println!("[DEBUG][open_scroll_overlay] 启动滚动监听");
+        start_scroll_listener(app.clone());
     }
 
     println!("[DEBUG][open_scroll_overlay] 悬浮窗创建成功 (non-activating)");
