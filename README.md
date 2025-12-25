@@ -95,4 +95,4 @@ After recording, the editor opens automatically:
 
 ## License
 
-MIT
+[Apache-2.0](LICENSE)
