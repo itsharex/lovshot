@@ -125,6 +125,12 @@
   opacity: 0.6;
 }
 
+.footer-logo {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+}
+
 .footer-brand {
   font-size: 0.85rem;
   font-weight: 600;
