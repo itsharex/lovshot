@@ -9,7 +9,83 @@ pub fn set_activation_policy(policy: i64) {
     unsafe {
         let ns_app: *mut objc::runtime::Object =
             msg_send![class!(NSApplication), sharedApplication];
+
         let _: () = msg_send![ns_app, setActivationPolicy: policy];
+
+        // Set dock icon after switching to regular mode
+        if policy == 0 {
+            set_dock_icon();
+        }
+    }
+}
+
+/// Set the dock icon from bundled icon file
+#[cfg(target_os = "macos")]
+fn set_dock_icon() {
+    use cocoa::appkit::NSImage;
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::{NSData, NSString};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    unsafe {
+        let ns_app: id = msg_send![class!(NSApplication), sharedApplication];
+
+        // Try to load icon from resources
+        let icon_paths = [
+            "icons/icon.icns",
+            "icons/128x128@2x.png",
+            "icons/128x128.png",
+        ];
+
+        for icon_path in &icon_paths {
+            // Try bundled resource path first
+            let bundle: id = msg_send![class!(NSBundle), mainBundle];
+            let resource_path: id = msg_send![bundle, resourcePath];
+
+            if resource_path != nil {
+                let path_str = NSString::alloc(nil).init_str(icon_path);
+                let full_path: id = msg_send![resource_path, stringByAppendingPathComponent: path_str];
+                let image: id = msg_send![class!(NSImage), alloc];
+                let image: id = msg_send![image, initWithContentsOfFile: full_path];
+
+                if image != nil {
+                    let _: () = msg_send![ns_app, setApplicationIconImage: image];
+                    println!("[dock] Set dock icon from bundle: {}", icon_path);
+                    return;
+                }
+            }
+
+            // Try relative path (for dev mode)
+            let cwd = std::env::current_dir().ok();
+            if let Some(cwd) = cwd {
+                println!("[dock] cwd: {:?}", cwd);
+                // Try both with and without src-tauri prefix
+                let paths_to_try = [
+                    cwd.join("src-tauri").join(icon_path),
+                    cwd.join(icon_path),
+                ];
+                for dev_path in &paths_to_try {
+                    println!("[dock] Trying dev path: {:?} exists={}", dev_path, dev_path.exists());
+                    if dev_path.exists() {
+                        if let Ok(bytes) = std::fs::read(dev_path) {
+                            let data: id = NSData::dataWithBytes_length_(
+                                nil,
+                                bytes.as_ptr() as *const std::os::raw::c_void,
+                                bytes.len() as u64,
+                            );
+                            let image: id = NSImage::initWithData_(NSImage::alloc(nil), data);
+                            if image != nil {
+                                let _: () = msg_send![ns_app, setApplicationIconImage: image];
+                                println!("[dock] Set dock icon from dev path: {:?}", dev_path);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("[dock] Warning: Could not find icon file");
     }
 }
 

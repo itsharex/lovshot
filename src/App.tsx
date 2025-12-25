@@ -869,6 +869,7 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
+          <img src="/logo.svg" alt="Lovshot" className="footer-logo" />
           <span className="footer-brand">Lovshot</span>
           <span className="footer-hint"><kbd>⌥</kbd><kbd>A</kbd> 截图 · <kbd>⌥</kbd><kbd>G</kbd> GIF</span>
         </div>

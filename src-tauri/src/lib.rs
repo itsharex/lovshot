@@ -244,10 +244,14 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    window.hide().unwrap();
-                    // Switch back to Accessory policy when hiding main window
+                    println!("[DEBUG][close] CloseRequested for main window");
+                    println!("[DEBUG][close] Step 1: set_activation_policy(1)");
                     windows::set_activation_policy(1);
+                    println!("[DEBUG][close] Step 2: window.hide()");
+                    window.hide().unwrap();
+                    println!("[DEBUG][close] Step 3: prevent_close");
                     api.prevent_close();
+                    println!("[DEBUG][close] Done");
                 }
             }
         })
