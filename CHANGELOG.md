@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.2
+
+### Patch Changes
+
+- Add logo to sidebar footer
+
 ## 0.18.1
 
 ### Patch Changes
@@ -11,6 +17,7 @@
   - 显示像素颜色值和坐标，支持 C/P 键快捷复制
   - 添加位置小地图显示光标在屏幕中的位置
   - 修复高 DPI 屏幕尺寸显示问题
+
 - fix(scroll): 滚动截图改为事件驱动并优化小幅滚动拼接
 - fix(scroll): 滚动截图移除选区边框避免被拼接
 - fix(scroll): 修正滚动方向匹配并增加滚轮事件日志
