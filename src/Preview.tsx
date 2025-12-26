@@ -117,14 +117,6 @@ export default function Preview() {
     }
   };
 
-  const handleClose = async () => {
-    try {
-      await getCurrentWindow().close();
-    } catch (e) {
-      console.error("[Preview] close failed:", e);
-    }
-  };
-
   const togglePin = async () => {
     const newPinned = !pinned;
     setPinned(newPinned);
