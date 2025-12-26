@@ -67,19 +67,15 @@
   box-sizing: border-box;
 }
 
-html {
-  background: transparent;
-}
-
-body {
-  background: transparent;
-  overflow: hidden;
-}
-
+html,
+body,
 #root {
   width: 100%;
   height: 100vh;
-  background: transparent;
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  overflow: hidden;
 }
 
 /* ========== Preview Mode (Simple) ========== */
@@ -125,16 +121,44 @@ body {
 
 /* ========== Share Editor Mode ========== */
 .share-editor {
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  margin: 8px;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   background: var(--background);
   font-family: system-ui, -apple-system, sans-serif;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  border: none;
+  outline: none;
+  border-radius: 12px;
   overflow: hidden;
+}
+
+.pin-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pin-btn:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.pin-btn.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .share-preview {
@@ -144,7 +168,6 @@ body {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: var(--muted);
   cursor: grab;
   overflow: hidden;
 }
@@ -153,30 +176,18 @@ body {
   cursor: grabbing;
 }
 
-.share-preview-inner {
-  max-width: 100%;
-  max-height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.share-preview-inner > * {
-  max-height: 100%;
-  overflow: hidden;
-}
-
-.share-preview-inner img {
-  max-width: 100%;
-  flex: 1;
-  min-height: 0;
-  height: auto;
-  object-fit: contain;
+/* Template wrapper for fixed-size scaling */
+.share-preview > * {
+  --tpl-width: 360px;
+  width: var(--tpl-width);
+  flex-shrink: 0;
+  transform-origin: center;
+  scale: var(--tpl-scale, 1);
 }
 
 /* ========== Template Styles ========== */
 
-/* Base template styles */
+/* Base template styles - fixed width, scale as a unit */
 .tpl-clean,
 .tpl-card,
 .tpl-polaroid,
@@ -189,7 +200,7 @@ body {
 .tpl-polaroid img,
 .tpl-quote img {
   display: block;
-  max-width: 100%;
+  width: 100%;
   height: auto;
 }
 
@@ -205,20 +216,16 @@ body {
 .tpl-clean {
   display: flex;
   flex-direction: column;
-  max-height: 100%;
-  background: var(--warm-bg);
-  padding: 20px;
+  align-items: center;
+  gap: 12px;
 }
 
 .tpl-clean img {
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  min-height: 0;
-  object-fit: contain;
 }
 
 .tpl-clean .tpl-caption {
-  margin-top: 16px;
   color: var(--foreground);
   text-align: center;
   font-style: italic;
@@ -227,20 +234,21 @@ body {
 
 /* ===== Card Template ===== */
 .tpl-card {
-  display: flex;
-  flex-direction: column;
-  max-height: 100%;
+  display: grid;
+  grid-template-rows: 1fr;
   background: linear-gradient(135deg, #e8e4dc 0%, #d4cfc5 100%);
   padding: 24px;
+  overflow: hidden;
 }
 
 .tpl-card-inner {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 12px;
   background: var(--background);
   border-radius: 16px;
   padding: 12px;
+  overflow: hidden;
   box-shadow:
     0 4px 6px rgba(0, 0, 0, 0.05),
     0 10px 20px rgba(0, 0, 0, 0.08);
@@ -248,12 +256,13 @@ body {
 
 .tpl-card img {
   border-radius: 8px;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  min-height: 80px;
 }
 
 .tpl-card .tpl-caption {
-  margin-top: 14px;
   padding: 0 4px;
   color: var(--foreground);
   font-size: 14px;
@@ -261,21 +270,20 @@ body {
 
 /* ===== Polaroid Template ===== */
 .tpl-polaroid {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  max-height: 100%;
+  display: grid;
+  place-items: center;
   background: #2c2c2c;
   padding: 24px;
+  overflow: hidden;
 }
 
 .tpl-polaroid-frame {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  max-height: 100%;
   background: #fefefe;
   padding: 10px 10px 0;
+  overflow: hidden;
   box-shadow:
     0 4px 8px rgba(0, 0, 0, 0.3),
     0 12px 24px rgba(0, 0, 0, 0.2);
@@ -284,8 +292,10 @@ body {
 
 .tpl-polaroid img {
   display: block;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  min-height: 80px;
 }
 
 .tpl-polaroid-bottom {
@@ -306,34 +316,34 @@ body {
 
 /* ===== Quote Template ===== */
 .tpl-quote {
-  display: flex;
-  flex-direction: column;
-  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
   background: var(--background);
   padding: 24px;
+  overflow: hidden;
 }
 
 .tpl-quote-text {
-  flex-shrink: 0;
-  margin: 0 0 16px;
-  padding: 0 8px;
+  margin: 0;
+  padding: 0 8px 0 16px;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.6;
   color: var(--foreground);
   border-left: 3px solid var(--accent);
-  padding-left: 16px;
 }
 
 .tpl-quote img {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  min-height: 80px;
 }
 
 .tpl-quote-footer {
-  margin-top: 16px;
   font-size: 12px;
   color: var(--muted-foreground);
   text-align: right;
@@ -343,7 +353,6 @@ body {
 /* ===== Watermark ===== */
 .tpl-watermark {
   display: block;
-  margin-top: 12px;
   font-size: 11px;
   color: var(--muted-foreground);
   text-align: right;
@@ -351,9 +360,6 @@ body {
   font-style: italic;
 }
 
-.tpl-card .tpl-watermark {
-  margin-top: 10px;
-}
 
 .tpl-polaroid .tpl-watermark {
   position: absolute;
@@ -376,33 +382,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.template-tabs {
-  display: flex;
-  gap: 4px;
-  justify-content: center;
-}
-
-.template-tab {
-  padding: 5px 14px;
-  border: 1px solid transparent;
-  border-radius: 16px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.template-tab:hover {
-  color: var(--foreground);
-}
-
-.template-tab.active {
-  background: var(--foreground);
-  color: var(--background);
 }
 
 .caption-input {
@@ -431,8 +410,15 @@ body {
 
 .share-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.share-footer > div:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .share-hint {
@@ -453,6 +439,7 @@ body {
 
 .share-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 8px;
 }
 

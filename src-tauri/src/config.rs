@@ -80,6 +80,12 @@ pub struct AppConfig {
     pub image_export_format: String, // "markdown", "html", "url_only"
     #[serde(default = "default_watermark_position")]
     pub watermark_position: WatermarkPosition,
+    #[serde(default = "default_show_caption_editor")]
+    pub show_caption_editor: bool,
+}
+
+fn default_show_caption_editor() -> bool {
+    true
 }
 
 fn default_image_export_format() -> String {
@@ -121,6 +127,7 @@ impl From<OldAppConfig> for AppConfig {
             screenshot_preview_enabled: old.screenshot_preview_enabled,
             image_export_format: default_image_export_format(),
             watermark_position: default_watermark_position(),
+            show_caption_editor: default_show_caption_editor(),
         }
     }
 }
@@ -218,6 +225,7 @@ impl Default for AppConfig {
             screenshot_preview_enabled: true,
             image_export_format: default_image_export_format(),
             watermark_position: default_watermark_position(),
+            show_caption_editor: default_show_caption_editor(),
         }
     }
 }

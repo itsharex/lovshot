@@ -196,3 +196,16 @@ pub fn set_watermark_position(position: String) -> Result<AppConfig, String> {
     config::save_config(&cfg)?;
     Ok(cfg)
 }
+
+#[tauri::command]
+pub fn get_show_caption_editor() -> bool {
+    config::load_config().show_caption_editor
+}
+
+#[tauri::command]
+pub fn set_show_caption_editor(enabled: bool) -> Result<AppConfig, String> {
+    let mut cfg = config::load_config();
+    cfg.show_caption_editor = enabled;
+    config::save_config(&cfg)?;
+    Ok(cfg)
+}

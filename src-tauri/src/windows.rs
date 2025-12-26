@@ -316,8 +316,49 @@ pub fn open_about_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Open the zoom window for full-size image viewing
+pub fn open_zoom_window(app: &AppHandle, image_path: &str) -> Result<(), String> {
+    println!("[zoom] Opening zoom window for: {}", image_path);
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let ns_app: *mut objc::runtime::Object =
+                msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+        }
+    }
+
+    // Close existing zoom window if any
+    if let Some(win) = app.get_webview_window("zoom") {
+        let _ = win.destroy();
+    }
+
+    let url = format!("/zoom.html?path={}", urlencoding::encode(image_path));
+
+    let win = WebviewWindowBuilder::new(app, "zoom", WebviewUrl::App(url.into()))
+        .title("Zoom")
+        .inner_size(800.0, 600.0)
+        .min_inner_size(400.0, 300.0)
+        .resizable(true)
+        .decorations(true)
+        .center()
+        .focused(true)
+        .build()
+        .map_err(|e| {
+            println!("[zoom] Failed to create window: {}", e);
+            e.to_string()
+        })?;
+
+    let _ = win.show();
+    let _ = win.set_focus();
+
+    Ok(())
+}
+
 /// Open the caption preview window (centered, with input for description)
-pub fn open_caption_window(app: &AppHandle, image_path: &str) -> Result<(), String> {
+pub fn open_caption_window(app: &AppHandle, image_path: &str, description: Option<&str>) -> Result<(), String> {
     println!("[caption] Opening caption window for: {}", image_path);
 
     #[cfg(target_os = "macos")]
@@ -340,7 +381,14 @@ pub fn open_caption_window(app: &AppHandle, image_path: &str) -> Result<(), Stri
     let win_w = 480.0;
     let win_h = 400.0;
 
-    let url = format!("/preview.html?path={}&mode=caption", urlencoding::encode(image_path));
+    let url = match description {
+        Some(desc) if !desc.is_empty() => format!(
+            "/preview.html?path={}&mode=caption&caption={}",
+            urlencoding::encode(image_path),
+            urlencoding::encode(desc)
+        ),
+        _ => format!("/preview.html?path={}&mode=caption", urlencoding::encode(image_path)),
+    };
     println!("[caption] URL: {}", url);
 
     let win = WebviewWindowBuilder::new(app, &window_label, WebviewUrl::App(url.into()))
@@ -357,6 +405,27 @@ pub fn open_caption_window(app: &AppHandle, image_path: &str) -> Result<(), Stri
             println!("[caption] Failed to create window: {}", e);
             e.to_string()
         })?;
+
+    // macOS: remove window border/shadow artifacts
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        if let Ok(ns_win) = win.ns_window() {
+            unsafe {
+                let ns_window = ns_win as *mut objc::runtime::Object;
+                // Set clear background color
+                let ns_color_class = class!(NSColor);
+                let clear_color: *mut objc::runtime::Object =
+                    msg_send![ns_color_class, clearColor];
+                let _: () = msg_send![ns_window, setBackgroundColor: clear_color];
+                let _: () = msg_send![ns_window, setOpaque: false];
+                // Remove titlebar style mask (NSWindowStyleMaskFullSizeContentView = 1 << 15)
+                let style_mask: u64 = msg_send![ns_window, styleMask];
+                let new_mask = style_mask & !(1 << 15);
+                let _: () = msg_send![ns_window, setStyleMask: new_mask];
+            }
+        }
+    }
 
     let _ = win.show();
     let _ = win.set_focus();

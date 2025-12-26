@@ -835,6 +835,7 @@ function App() {
                     data-path={item.path}
                     className={`history-item ${selected?.path === item.path ? "selected" : ""} ${selectedPaths.has(item.path) ? "multi-selected" : ""} ${item.isLoading ? "loading" : ""} ${item.description ? "has-description" : ""}`}
                     onClick={(e) => !item.isLoading && handleItemClick(e, item)}
+                    onDoubleClick={() => !item.isLoading && invoke("open_caption_editor", { path: item.path, description: item.description || "" })}
                     onContextMenu={(e) => handleContextMenu(e, item)}
                     onKeyDown={(e) => {
                       if (item.isLoading) return;
@@ -939,7 +940,10 @@ function App() {
         <div className="gallery-preview">
           {selected ? (
             <>
-              <div className="preview-image-container">
+              <div
+                className="preview-image-container"
+                onDoubleClick={() => invoke("open_zoom_viewer", { path: selected.path })}
+              >
                 <img
                   src={convertFileSrc(selected.path)}
                   alt={selected.filename}
@@ -982,7 +986,7 @@ function App() {
                   <button className="btn-action btn-secondary" onClick={handleRevealInFinder}>
                     显示
                   </button>
-                  <button className="btn-action btn-secondary" onClick={() => invoke("open_caption_editor", { path: selected.path })}>
+                  <button className="btn-action btn-secondary" onClick={() => invoke("open_caption_editor", { path: selected.path, description: selected.description || "" })}>
                     编辑备注
                   </button>
                 </div>
@@ -1080,6 +1084,7 @@ function App() {
           onExported={handleExported}
         />
       )}
+
     </main>
   );
 }

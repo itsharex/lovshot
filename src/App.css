@@ -2242,3 +2242,8 @@ button:hover {
   color: var(--foreground);
   margin: 0.5rem 0;
 }
+
+/* Zoom-in cursor for preview image */
+.preview-image-container {
+  cursor: zoom-in;
+}

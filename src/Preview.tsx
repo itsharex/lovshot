@@ -26,19 +26,22 @@ export default function Preview() {
   const params = new URLSearchParams(window.location.search);
   const path = params.get("path") || "";
   const initialMode = params.get("mode") || "preview";
+  const initialCaption = params.get("caption") || "";
   const [isCaptionMode, setIsCaptionMode] = useState(initialMode === "caption");
 
-  const [caption, setCaption] = useState("");
+  const [caption, setCaption] = useState(initialCaption);
   const [template, setTemplate] = useState<TemplateId>("clean");
   const [composing, setComposing] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showWatermark, setShowWatermark] = useState(true);
   const [watermarkPosition, setWatermarkPosition] = useState("bottom_right");
   const [screenshotCount, setScreenshotCount] = useState(0);
+  const [pinned, setPinned] = useState(false);
+  const [showCaptionEditor, setShowCaptionEditor] = useState(true);
 
-  // Load watermark settings from config
+  // Load settings from config
   useEffect(() => {
-    console.log('[DEBUG][Preview] Loading watermark settings...');
+    console.log('[DEBUG][Preview] Loading settings...');
     invoke<string>("get_watermark_position").then((pos) => {
       console.log('[DEBUG][Preview] Loaded watermark position:', pos);
       setWatermarkPosition(pos);
@@ -48,11 +51,42 @@ export default function Preview() {
       console.log('[DEBUG][Preview] Screenshot count:', count);
       setScreenshotCount(count);
     }).catch(console.error);
+    invoke<boolean>("get_show_caption_editor").then((enabled) => {
+      setShowCaptionEditor(enabled);
+    }).catch(console.error);
   }, []);
   const captionRef = useRef(caption);
   const renderRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   captionRef.current = caption;
+
+  // Calculate template scale based on container size
+  useEffect(() => {
+    const container = previewRef.current;
+    if (!container) return;
+
+    const TPL_WIDTH = 360;
+    const updateScale = () => {
+      const rect = container.getBoundingClientRect();
+      const padding = 32; // 16px * 2
+      const availableWidth = rect.width - padding;
+      const availableHeight = rect.height - padding;
+      const tpl = container.firstElementChild as HTMLElement;
+      if (!tpl) return;
+
+      const tplHeight = tpl.scrollHeight;
+      const scaleX = availableWidth / TPL_WIDTH;
+      const scaleY = tplHeight > 0 ? availableHeight / tplHeight : 1;
+      const scale = Math.min(scaleX, scaleY, 1);
+      tpl.style.setProperty('--tpl-scale', String(scale));
+    };
+
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(container);
+    updateScale();
+
+    return () => observer.disconnect();
+  }, [template, caption, imageLoaded]);
 
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
 
@@ -68,8 +102,12 @@ export default function Preview() {
     const windowPadding = 32;
     const totalHeight = previewHeight + controlsHeight + windowPadding;
     const height = Math.min(Math.max(totalHeight, 320), 800);
+    // 最小高度：控件区 + caption 预留 + 图片最小高度
+    const minHeight = controlsHeight + 100 + 80;
     try {
-      await getCurrentWindow().setSize(new LogicalSize(windowWidth, height));
+      const win = getCurrentWindow();
+      await win.setMinSize(new LogicalSize(320, minHeight));
+      await win.setSize(new LogicalSize(windowWidth, height));
     } catch (e) {
       console.error("[Preview] resize failed:", e);
     }
@@ -83,6 +121,16 @@ export default function Preview() {
     }
   };
 
+  const togglePin = async () => {
+    const newPinned = !pinned;
+    setPinned(newPinned);
+    try {
+      await getCurrentWindow().setAlwaysOnTop(newPinned);
+    } catch (e) {
+      console.error("[Preview] setAlwaysOnTop failed:", e);
+    }
+  };
+
   const handleClick = async () => {
     if (!isCaptionMode) {
       // 点击预览进入 caption 模式
@@ -90,21 +138,28 @@ export default function Preview() {
     }
   };
 
-  // Load existing description when opening caption editor
+  // Load existing description when opening caption editor (fallback if not passed via URL)
   useEffect(() => {
-    if (!isCaptionMode || !path) return;
+    if (!isCaptionMode || !path || initialCaption) return;
     invoke<string | null>("get_image_description", { path }).then((desc) => {
       if (desc) setCaption(desc);
     }).catch(console.error);
-  }, [isCaptionMode, path]);
+  }, [isCaptionMode, path, initialCaption]);
 
-  // Auto-save and close on window blur
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
+  const composingRef = useRef(composing);
+  composingRef.current = composing;
+
+  // Auto-save and close on window blur (unless pinned, composing, or dev mode)
   useEffect(() => {
     if (!isCaptionMode) return;
+    // 开发模式下禁用失焦关闭，方便调试
+    if (import.meta.env.DEV) return;
 
     const win = getCurrentWindow();
     const unlisten = win.onFocusChanged(async ({ payload: focused }) => {
-      if (!focused) {
+      if (!focused && !pinnedRef.current && !composingRef.current) {
         if (captionRef.current.trim()) {
           await invoke("save_caption", { path, caption: captionRef.current.trim() });
         }
@@ -136,12 +191,16 @@ export default function Preview() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isCaptionMode, path]);
 
-  // Resize window when template changes
+  // Set min size on caption mode enter, resize when image first loads
   useEffect(() => {
-    if (isCaptionMode && imageLoaded && imgSize.width > 0) {
+    if (!isCaptionMode) return;
+    const win = getCurrentWindow();
+    // 立即设置最小尺寸
+    win.setMinSize(new LogicalSize(320, 340)).catch(console.error);
+    if (imageLoaded && imgSize.width > 0) {
       resizeWindowToFit(imgSize.width, imgSize.height);
     }
-  }, [template, isCaptionMode, imageLoaded, imgSize]);
+  }, [isCaptionMode, imageLoaded, imgSize]);
 
   const handleCopyComposed = async () => {
     if (composing || !renderRef.current || !captionRef.current.trim()) return;
@@ -171,7 +230,7 @@ export default function Preview() {
       });
       // Save caption to original image's Finder comment
       if (captionRef.current.trim()) {
-        await invoke("save_caption", { path, caption: captionRef.current.trim() });
+        await invoke("save_caption", { path, caption: captionRef.current.trim(), closeWindow: !pinned });
       }
       console.log("[Preview] Image copied to clipboard via Tauri");
     } catch (err) {
@@ -186,6 +245,7 @@ export default function Preview() {
     const imageSrc = convertFileSrc(path);
 
     const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+      if (imageLoaded) return; // 已加载过，切换模板时不再调整窗口
       const img = e.currentTarget;
       setImgSize({ width: img.naturalWidth, height: img.naturalHeight });
       setImageLoaded(true);
@@ -251,6 +311,18 @@ export default function Preview() {
   if (isCaptionMode) {
     return (
       <div className="share-editor">
+        {/* Pin button */}
+        <button
+          className={`pin-btn${pinned ? " active" : ""}`}
+          onClick={togglePin}
+          title={pinned ? "取消置顶" : "置顶窗口"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 17v5" />
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+          </svg>
+        </button>
+
         {/* Hidden render target for html2canvas */}
         <div
           ref={renderRef}
@@ -265,26 +337,13 @@ export default function Preview() {
         </div>
 
         {/* Visible preview area */}
-        <div className="share-preview" data-tauri-drag-region>
-          <div ref={previewRef} className={`share-preview-inner tpl-${template}`}>
-            {renderTemplateContent()}
-          </div>
+        <div className="share-preview" ref={previewRef} data-tauri-drag-region>
+          {renderTemplateContent()}
         </div>
 
         {/* Bottom controls */}
         <div className="share-controls">
-          <div className="template-tabs">
-            {SHARE_TEMPLATES.map((t) => (
-              <button
-                key={t.id}
-                className={`template-tab${template === t.id ? " active" : ""}`}
-                onClick={() => setTemplate(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <textarea
+          {showCaptionEditor && <textarea
             className="caption-input"
             placeholder="添加说明文字…"
             value={caption}
@@ -294,17 +353,41 @@ export default function Preview() {
               emit("caption-typing", { path, caption: val });
             }}
             autoFocus
-          />
+          />}
           <div className="share-footer">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
+                <span>风格</span>
+                <Select value={template} onValueChange={(v) => setTemplate(v as TemplateId)}>
+                  <SelectTrigger className="h-7 w-20 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SHARE_TEMPLATES.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+                <Checkbox
+                  checked={showCaptionEditor}
+                  onCheckedChange={async (checked) => {
+                    const enabled = checked === true;
+                    setShowCaptionEditor(enabled);
+                    await invoke("set_show_caption_editor", { enabled });
+                  }}
+                />
+                <span>备注</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
                 <Checkbox
                   checked={showWatermark}
                   onCheckedChange={(checked) => setShowWatermark(checked === true)}
                 />
                 <span>水印</span>
               </label>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
                 <span>编号</span>
                 <Select
                   value={watermarkPosition}
@@ -365,7 +448,7 @@ export default function Preview() {
                     });
                     // Save caption to original image's Finder comment
                     if (caption.trim()) {
-                      await invoke("save_caption", { path, caption: caption.trim() });
+                      await invoke("save_caption", { path, caption: caption.trim(), closeWindow: !pinned });
                     }
                     await emit("image-saved", { path: newPath });
                     console.log("[Preview] Image saved:", newPath);

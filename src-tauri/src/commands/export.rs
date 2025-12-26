@@ -410,7 +410,7 @@ pub fn save_screenshot(
     let is_caption_mode = caption_mode.unwrap_or(false);
     if is_caption_mode {
         println!("[save_screenshot] Opening caption preview window");
-        if let Err(e) = crate::windows::open_caption_window(&app, &path_str) {
+        if let Err(e) = crate::windows::open_caption_window(&app, &path_str, None) {
             println!("[save_screenshot] Failed to open caption window: {}", e);
         }
     } else {
@@ -980,8 +980,8 @@ pub async fn get_stats() -> Result<StatsResponse, String> {
 }
 
 #[tauri::command]
-pub fn save_caption(app: AppHandle, path: String, caption: String) -> Result<(), String> {
-    println!("[save_caption] path: {}, caption: {}", path, caption);
+pub fn save_caption(app: AppHandle, path: String, caption: String, close_window: Option<bool>) -> Result<(), String> {
+    println!("[save_caption] path: {}, caption: {}, close: {:?}", path, caption, close_window);
 
     let input_path = PathBuf::from(&path);
     if !input_path.exists() {
@@ -1007,12 +1007,14 @@ pub fn save_caption(app: AppHandle, path: String, caption: String) -> Result<(),
 
     println!("[save_caption] Caption save initiated");
 
-    // Close all caption windows from backend
-    use tauri::Manager;
-    for (label, window) in app.webview_windows() {
-        if label.starts_with("caption-") {
-            println!("[save_caption] Closing window: {}", label);
-            let _ = window.destroy();
+    // Close all caption windows from backend (unless explicitly disabled)
+    if close_window.unwrap_or(true) {
+        use tauri::Manager;
+        for (label, window) in app.webview_windows() {
+            if label.starts_with("caption-") {
+                println!("[save_caption] Closing window: {}", label);
+                let _ = window.destroy();
+            }
         }
     }
 
@@ -1412,8 +1414,13 @@ pub fn export_folder_to_md(folder_path: Option<String>, format: String) -> Resul
 }
 
 #[tauri::command]
-pub fn open_caption_editor(app: AppHandle, path: String) -> Result<(), String> {
-    crate::windows::open_caption_window(&app, &path)
+pub fn open_caption_editor(app: AppHandle, path: String, description: Option<String>) -> Result<(), String> {
+    crate::windows::open_caption_window(&app, &path, description.as_deref())
+}
+
+#[tauri::command]
+pub fn open_zoom_viewer(app: AppHandle, path: String) -> Result<(), String> {
+    crate::windows::open_zoom_window(&app, &path)
 }
 
 #[tauri::command]
@@ -1567,7 +1574,7 @@ pub fn save_annotated_screenshot(
     // Show preview window
     let is_caption_mode = caption_mode.unwrap_or(false);
     if is_caption_mode {
-        if let Err(e) = crate::windows::open_caption_window(&app, &path_str) {
+        if let Err(e) = crate::windows::open_caption_window(&app, &path_str, None) {
             println!("[save_annotated_screenshot] Failed to open caption window: {}", e);
         }
     } else {
