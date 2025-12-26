@@ -736,75 +736,48 @@ export default function Selector() {
   const toolbarStyle: React.CSSProperties = (() => {
     if (!selectionRect) return {};
 
-    const TOOLBAR_WIDTH = 500;
     const TOOLBAR_HEIGHT = 60;
     const GAP = 12;
     const PADDING = 8;
 
     const { x, y, w, h } = selectionRect;
-    const ep = endPos.current;
+    const rawEnd = endPos.current;
+
+    // 终点在选区的上半还是下半
+    const isEndBottom = rawEnd.y >= y + h / 2;
 
     // 计算各个方向的可用空间
     const spaceBottom = window.innerHeight - (y + h + GAP);
     const spaceTop = y - GAP;
-    const spaceRight = window.innerWidth - (x + w + GAP);
-    const spaceLeft = x - GAP;
 
-    // 计算工具栏中心到终点的距离
-    const dist = (cx: number, cy: number) => Math.hypot(cx - ep.x, cy - ep.y);
+    // 工具栏水平居中于选区
+    const centerX = x + w / 2;
+    let top: number;
 
-    // 候选位置：外侧四个方向，工具栏中心尽量靠近终点
-    const clampX = (v: number) => Math.max(PADDING, Math.min(v, window.innerWidth - TOOLBAR_WIDTH - PADDING));
-    const clampY = (v: number) => Math.max(PADDING, Math.min(v, window.innerHeight - TOOLBAR_HEIGHT - PADDING));
-
-    const candidates: { left: number; top: number; dist: number }[] = [];
-
-    // 下方
-    if (spaceBottom >= TOOLBAR_HEIGHT) {
-      const l = clampX(ep.x - TOOLBAR_WIDTH / 2);
-      const t = y + h + GAP;
-      candidates.push({ left: l, top: t, dist: dist(l + TOOLBAR_WIDTH / 2, t + TOOLBAR_HEIGHT / 2) });
-    }
-    // 上方
-    if (spaceTop >= TOOLBAR_HEIGHT) {
-      const l = clampX(ep.x - TOOLBAR_WIDTH / 2);
-      const t = y - GAP - TOOLBAR_HEIGHT;
-      candidates.push({ left: l, top: t, dist: dist(l + TOOLBAR_WIDTH / 2, t + TOOLBAR_HEIGHT / 2) });
-    }
-    // 右侧
-    if (spaceRight >= TOOLBAR_WIDTH) {
-      const l = x + w + GAP;
-      const t = clampY(ep.y - TOOLBAR_HEIGHT / 2);
-      candidates.push({ left: l, top: t, dist: dist(l + TOOLBAR_WIDTH / 2, t + TOOLBAR_HEIGHT / 2) });
-    }
-    // 左侧
-    if (spaceLeft >= TOOLBAR_WIDTH) {
-      const l = x - GAP - TOOLBAR_WIDTH;
-      const t = clampY(ep.y - TOOLBAR_HEIGHT / 2);
-      candidates.push({ left: l, top: t, dist: dist(l + TOOLBAR_WIDTH / 2, t + TOOLBAR_HEIGHT / 2) });
-    }
-
-    let left: number, top: number;
-
-    if (candidates.length > 0) {
-      // 选择距离终点最近的外侧位置
-      const best = candidates.reduce((a, b) => (a.dist < b.dist ? a : b));
-      left = best.left;
-      top = best.top;
+    if (isEndBottom) {
+      // 终点在下半：优先下方 → 上方 → 内部下方
+      if (spaceBottom >= TOOLBAR_HEIGHT) {
+        top = y + h + GAP;
+      } else if (spaceTop >= TOOLBAR_HEIGHT) {
+        top = y - GAP - TOOLBAR_HEIGHT;
+      } else {
+        top = y + h - TOOLBAR_HEIGHT - GAP;
+      }
     } else {
-      // 外侧都放不下，放在区域内靠近终点的位置
-      left = clampX(ep.x - TOOLBAR_WIDTH / 2);
-      top = clampY(ep.y - TOOLBAR_HEIGHT / 2);
-      // 确保不超出选区且有 GAP
-      left = Math.max(x + GAP, Math.min(left, x + w - TOOLBAR_WIDTH - GAP));
-      top = Math.max(y + GAP, Math.min(top, y + h - TOOLBAR_HEIGHT - GAP));
+      // 终点在上半：优先上方 → 下方 → 内部上方
+      if (spaceTop >= TOOLBAR_HEIGHT) {
+        top = y - GAP - TOOLBAR_HEIGHT;
+      } else if (spaceBottom >= TOOLBAR_HEIGHT) {
+        top = y + h + GAP;
+      } else {
+        top = y + GAP;
+      }
     }
 
     // 边界限制
-    left = Math.max(PADDING, Math.min(left, window.innerWidth - TOOLBAR_WIDTH - PADDING));
     top = Math.max(PADDING, Math.min(top, window.innerHeight - TOOLBAR_HEIGHT - PADDING));
 
-    return { left, top };
+    return { left: centerX, top, transform: "translateX(-50%)" };
   })();
 
   const scrollCaptureUiActive = scrollCaptureActive || (mode === "scroll" && selectionRect);
