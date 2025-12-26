@@ -343,16 +343,48 @@ export default function Selector() {
     [selectionRect]
   );
 
-  // Drag selection start
+  // Drag selection start - use pointer capture to track mouse even outside window
   const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       e.stopPropagation();
       if (!selectionRect) return;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
       setIsDragging(true);
       startPos.current = { x: e.clientX, y: e.clientY };
       startRect.current = { ...selectionRect };
     },
     [selectionRect]
+  );
+
+  // Drag move with pointer capture
+  const handleDragMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging || !startRect.current) return;
+      const dx = e.clientX - startPos.current.x;
+      const dy = e.clientY - startPos.current.y;
+      const r = startRect.current;
+      const x = r.x + dx;
+      const y = r.y + dy;
+
+      setSelectionRect({ x, y, w: r.w, h: r.h });
+      if (selectionRef.current) {
+        selectionRef.current.style.left = `${x}px`;
+        selectionRef.current.style.top = `${y}px`;
+      }
+    },
+    [isDragging]
+  );
+
+  // Drag end with pointer capture release
+  const handleDragEnd = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging) return;
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      setIsDragging(false);
+      startRect.current = null;
+      setOriginalWindowInfo(null);
+    },
+    [isDragging]
   );
 
   // Mouse events
@@ -379,22 +411,6 @@ export default function Selector() {
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      // Handle drag move
-      if (isDragging && startRect.current) {
-        const dx = e.clientX - startPos.current.x;
-        const dy = e.clientY - startPos.current.y;
-        const r = startRect.current;
-        const x = r.x + dx;
-        const y = r.y + dy;
-
-        setSelectionRect({ x, y, w: r.w, h: r.h });
-        if (selectionRef.current) {
-          selectionRef.current.style.left = `${x}px`;
-          selectionRef.current.style.top = `${y}px`;
-        }
-        return;
-      }
-
       // Handle resize drag
       if (resizeDir && startRect.current) {
         const dx = e.clientX - startPos.current.x;
@@ -459,19 +475,11 @@ export default function Selector() {
         sizeRef.current.style.display = "block";
       }
     },
-    [isSelecting, resizeDir, isDragging]
+    [isSelecting, resizeDir]
   );
 
   const handleMouseUp = useCallback(
     async (e: React.MouseEvent) => {
-      // Handle drag end
-      if (isDragging) {
-        setIsDragging(false);
-        startRect.current = null;
-        setOriginalWindowInfo(null); // Clear window info since user moved the selection
-        return;
-      }
-
       // Handle resize end
       if (resizeDir) {
         setResizeDir(null);
@@ -586,7 +594,7 @@ export default function Selector() {
         }
       }
     },
-    [isSelecting, resizeDir, isDragging, excludeTitlebar, mode, closeWindow]
+    [isSelecting, resizeDir, excludeTitlebar, mode, closeWindow]
   );
 
   // Re-calculate selection when excludeTitlebar changes (only for window selections)
@@ -838,7 +846,9 @@ export default function Selector() {
             cursor: "move",
             zIndex: 11,
           }}
-          onMouseDown={handleDragStart}
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
         />
       )}
 

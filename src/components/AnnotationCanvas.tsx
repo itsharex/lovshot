@@ -250,6 +250,73 @@ export function AnnotationCanvas({
     setDrawing({ isDrawing: false, startX: 0, startY: 0, currentAnnotation: null });
   }, [drawing, onAddAnnotation]);
 
+  // Listen to document mouseup/mousemove when drawing to handle mouse outside canvas
+  useEffect(() => {
+    if (!drawing.isDrawing) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      const container = stage.container().getBoundingClientRect();
+      const pos = {
+        x: e.clientX - container.left,
+        y: e.clientY - container.top,
+      };
+
+      const ann = drawing.currentAnnotation;
+      if (!ann) return;
+
+      if (ann.type === 'rect' || ann.type === 'mosaic') {
+        const x = Math.min(pos.x, drawing.startX);
+        const y = Math.min(pos.y, drawing.startY);
+        const w = Math.abs(pos.x - drawing.startX);
+        const h = Math.abs(pos.y - drawing.startY);
+        setDrawing((prev) => ({
+          ...prev,
+          currentAnnotation: { ...ann, x, y, width: w, height: h } as typeof ann,
+        }));
+      } else if (ann.type === 'arrow') {
+        setDrawing((prev) => ({
+          ...prev,
+          currentAnnotation: {
+            ...ann,
+            points: [drawing.startX, drawing.startY, pos.x, pos.y],
+          } as ArrowAnnotation,
+        }));
+      }
+    };
+
+    const handleDocumentMouseUp = () => {
+      if (!drawing.isDrawing || !drawing.currentAnnotation) return;
+
+      const ann = drawing.currentAnnotation;
+
+      if (ann.type === 'rect' || ann.type === 'mosaic') {
+        if ((ann as RectAnnotation).width > 5 && (ann as RectAnnotation).height > 5) {
+          onAddAnnotation(ann);
+        }
+      } else if (ann.type === 'arrow') {
+        const pts = (ann as ArrowAnnotation).points;
+        const dx = pts[2] - pts[0];
+        const dy = pts[3] - pts[1];
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+          onAddAnnotation(ann);
+        }
+      }
+
+      setDrawing({ isDrawing: false, startX: 0, startY: 0, currentAnnotation: null });
+    };
+
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, [drawing.isDrawing, drawing.startX, drawing.startY, drawing.currentAnnotation, onAddAnnotation, stageRef]);
+
   const handleShapeClick = useCallback((id: string) => {
     if (activeTool === 'select') {
       onSelectAnnotation(id);
@@ -502,7 +569,6 @@ export function AnnotationCanvas({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
       >
         <Layer>
           {/* Background image */}
