@@ -80,6 +80,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selected, setSelected] = useState<HistoryItem | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -434,7 +435,7 @@ function App() {
         // Only select if dragged more than 10px
         if (boxWidth > 10 || boxHeight > 10) {
           didDragRef.current = true; // Mark that we did a valid drag
-          const items = document.querySelectorAll(".history-item[data-path]");
+          const items = document.querySelectorAll("[data-path]");
           const newSelected = new Set(selectedPaths);
           items.forEach((el) => {
             const rect = el.getBoundingClientRect();
@@ -797,6 +798,22 @@ function App() {
                 GIF
               </button>
             </div>
+            <div className="view-toggle">
+              <button
+                className={`view-btn ${viewMode === "grid" ? "active" : ""}`}
+                onClick={() => setViewMode("grid")}
+                title="网格视图"
+              >
+                ▦
+              </button>
+              <button
+                className={`view-btn ${viewMode === "list" ? "active" : ""}`}
+                onClick={() => setViewMode("list")}
+                title="列表视图"
+              >
+                ☰
+              </button>
+            </div>
           </div>
 
           <div className="history-scroll" onMouseDown={handleDragStart}>
@@ -806,7 +823,7 @@ function App() {
                 <p>暂无{filter === "gif" ? "GIF" : filter === "screenshot" ? "截图" : "记录"}</p>
                 <p className="empty-hint">使用快捷键开始截图吧</p>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <Masonry
                 breakpointCols={{ default: 3, 380: 4, 320: 3, 280: 2 }}
                 className="history-grid"
@@ -858,6 +875,41 @@ function App() {
                   </div>
                 ))}
               </Masonry>
+            ) : (
+              <div className="history-list">
+                {history.map((item) => (
+                  <div
+                    key={item.path}
+                    data-path={item.path}
+                    className={`history-list-item ${selected?.path === item.path ? "selected" : ""} ${selectedPaths.has(item.path) ? "multi-selected" : ""} ${item.isLoading ? "loading" : ""}`}
+                    onClick={(e) => !item.isLoading && handleItemClick(e, item)}
+                    onContextMenu={(e) => handleContextMenu(e, item)}
+                    tabIndex={0}
+                    role="button"
+                  >
+                    <div className="list-thumb-wrapper">
+                      {item.isLoading ? (
+                        <div className="list-thumb-placeholder" />
+                      ) : (
+                        <img src={convertFileSrc(item.path)} alt={item.filename} className="list-thumb" loading="lazy" />
+                      )}
+                      <span className={`list-badge list-badge-${item.file_type}`}>
+                        {item.file_type === "gif" ? "GIF" : "IMG"}
+                      </span>
+                    </div>
+                    <div className="list-info">
+                      <span className="list-filename">{item.filename}</span>
+                      <span className="list-meta">
+                        {formatSize(item.size)} · {formatDate(item.modified)}
+                        {item.description && ` · ${item.description}`}
+                      </span>
+                    </div>
+                    {selectedPaths.size > 0 && (
+                      <span className={`select-checkbox ${selectedPaths.has(item.path) ? "checked" : ""}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
 
             {hasMore && (
@@ -953,7 +1005,12 @@ function App() {
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.items.length > 1 && (
-            <div className="context-menu-header">已选择 {contextMenu.items.length} 项</div>
+            <>
+              <div className="context-menu-header">已选择 {contextMenu.items.length} 项</div>
+              <button onClick={() => { setSelectedPaths(new Set()); closeContextMenu(); }}>
+                全部取消选择
+              </button>
+            </>
           )}
           {contextMenu.items.length === 1 && (
             <button onClick={handleMenuToggleSelect}>

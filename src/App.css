@@ -657,6 +657,16 @@ kbd {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
+.history-list-item.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+
+.history-list-item.multi-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+}
+
 .list-thumb-wrapper {
   position: relative;
   flex-shrink: 0;

@@ -25,8 +25,8 @@ type TemplateId = (typeof SHARE_TEMPLATES)[number]["id"];
 export default function Preview() {
   const params = new URLSearchParams(window.location.search);
   const path = params.get("path") || "";
-  const mode = params.get("mode") || "preview";
-  const isCaptionMode = mode === "caption";
+  const initialMode = params.get("mode") || "preview";
+  const [isCaptionMode, setIsCaptionMode] = useState(initialMode === "caption");
 
   const [caption, setCaption] = useState("");
   const [template, setTemplate] = useState<TemplateId>("clean");
@@ -85,7 +85,8 @@ export default function Preview() {
 
   const handleClick = async () => {
     if (!isCaptionMode) {
-      await handleClose();
+      // 点击预览进入 caption 模式
+      setIsCaptionMode(true);
     }
   };
 
