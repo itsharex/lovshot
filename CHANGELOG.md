@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.4
+
+### Patch Changes
+
+- fix: resolve TypeScript errors in Preview and Selector
+
 ## 0.18.3
 
 ### Patch Changes
