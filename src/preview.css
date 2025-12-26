@@ -177,9 +177,8 @@ body,
 }
 
 /* Template wrapper for fixed-size scaling */
-.share-preview > * {
-  --tpl-width: 360px;
-  width: var(--tpl-width);
+.share-capture {
+  width: 360px;
   flex-shrink: 0;
   transform-origin: center;
   scale: var(--tpl-scale, 1);
@@ -192,6 +191,7 @@ body,
 .tpl-card,
 .tpl-polaroid,
 .tpl-quote {
+  width: 360px; /* 固定宽度，确保预览和截图一致 */
   font-family: "PingFang SC", "SF Pro Display", system-ui, sans-serif;
 }
 
@@ -217,7 +217,6 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
 }
 
 .tpl-clean img {
@@ -226,7 +225,8 @@ body,
 }
 
 .tpl-clean .tpl-caption {
-  color: var(--foreground);
+  margin-top: 12px; /* 用 margin 替代 gap，html2canvas 兼容性更好 */
+  color: #181818; /* 用具体值替代 var(--foreground) */
   text-align: center;
   font-style: italic;
   opacity: 0.8;
@@ -242,10 +242,9 @@ body,
 }
 
 .tpl-card-inner {
-  display: grid;
-  grid-template-rows: 1fr auto auto;
-  gap: 12px;
-  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  background: #F9F9F7;
   border-radius: 16px;
   padding: 12px;
   overflow: hidden;
@@ -257,54 +256,52 @@ body,
 .tpl-card img {
   border-radius: 8px;
   width: 100%;
-  height: 100%;
+  height: auto;
   object-fit: contain;
   min-height: 80px;
 }
 
 .tpl-card .tpl-caption {
+  margin-top: 12px;
   padding: 0 4px;
-  color: var(--foreground);
+  color: #181818;
   font-size: 14px;
 }
 
 /* ===== Polaroid Template ===== */
 .tpl-polaroid {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #2c2c2c;
   padding: 24px;
-  overflow: hidden;
 }
 
 .tpl-polaroid-frame {
-  display: grid;
-  grid-template-rows: 1fr auto;
-  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   background: #fefefe;
   padding: 10px 10px 0;
-  overflow: hidden;
   box-shadow:
     0 4px 8px rgba(0, 0, 0, 0.3),
     0 12px 24px rgba(0, 0, 0, 0.2);
-  transform: rotate(-1.5deg);
+  /* 移除 rotate，html2canvas 不支持 */
 }
 
 .tpl-polaroid img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  height: auto;
   min-height: 80px;
 }
 
 .tpl-polaroid-bottom {
   height: 56px;
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 6px 10px;
+  position: relative;
 }
 
 .tpl-polaroid .tpl-caption {
@@ -316,36 +313,36 @@ body,
 
 /* ===== Quote Template ===== */
 .tpl-quote {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 16px;
-  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  background: #F9F9F7;
   padding: 24px;
   overflow: hidden;
 }
 
 .tpl-quote-text {
-  margin: 0;
+  margin: 0 0 16px 0;
   padding: 0 8px 0 16px;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.6;
-  color: var(--foreground);
-  border-left: 3px solid var(--accent);
+  color: #181818;
+  border-left: 3px solid #F0EEE6;
 }
 
 .tpl-quote img {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   width: 100%;
-  height: 100%;
+  height: auto;
   object-fit: contain;
   min-height: 80px;
 }
 
 .tpl-quote-footer {
+  margin-top: 16px;
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: #87867F;
   text-align: right;
   min-height: 1em;
 }
@@ -353,8 +350,9 @@ body,
 /* ===== Watermark ===== */
 .tpl-watermark {
   display: block;
+  margin-top: 8px;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: #87867F;
   text-align: right;
   opacity: 0.5;
   font-style: italic;
@@ -469,8 +467,3 @@ body,
   cursor: not-allowed;
 }
 
-/* ========== Render target (for html2canvas) ========== */
-.share-render img {
-  max-width: 640px;
-  height: auto;
-}

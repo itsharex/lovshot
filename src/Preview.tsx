@@ -3,7 +3,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
-import html2canvas from "html2canvas";
+import { domToCanvas } from "modern-screenshot";
 import { Checkbox } from "./components/ui/checkbox";
 import {
   Select,
@@ -202,33 +202,52 @@ export default function Preview() {
     }
   }, [isCaptionMode, imageLoaded, imgSize]);
 
+  // 共用的截图函数 - 使用 modern-screenshot 截取 .share-capture
+  const captureTemplate = async (): Promise<{ rgba: number[]; width: number; height: number } | null> => {
+    const captureEl = renderRef.current;
+    if (!captureEl) return null;
+
+    // 临时移除 scale，确保截图与原始尺寸一致
+    const originalScale = captureEl.style.getPropertyValue('--tpl-scale');
+    captureEl.style.setProperty('--tpl-scale', '1');
+    void captureEl.offsetHeight;
+
+    try {
+      const canvas = await domToCanvas(captureEl, {
+        scale: 2,
+        backgroundColor: null,
+      });
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      return { rgba: Array.from(imageData.data), width: canvas.width, height: canvas.height };
+    } catch (err) {
+      console.error("[captureTemplate] modern-screenshot error:", err);
+      return null;
+    } finally {
+      if (originalScale) {
+        captureEl.style.setProperty('--tpl-scale', originalScale);
+      } else {
+        captureEl.style.removeProperty('--tpl-scale');
+      }
+    }
+  };
+
   const handleCopyComposed = async () => {
     if (composing || !renderRef.current || !captionRef.current.trim()) return;
     setComposing(true);
 
     try {
-      const canvas = await html2canvas(renderRef.current, {
-        backgroundColor: null,
-        scale: 2, // 2x for retina
-        useCORS: true,
-        logging: false,
-      });
-
-      // Get image data and send to Rust for clipboard
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        setComposing(false);
-        return;
-      }
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const rgba = Array.from(imageData.data);
+      const result = await captureTemplate();
+      if (!result) return;
 
       await invoke("copy_rgba_to_clipboard", {
-        data: rgba,
-        width: canvas.width,
-        height: canvas.height,
+        data: result.rgba,
+        width: result.width,
+        height: result.height,
       });
-      // Save caption to original image's Finder comment
       if (captionRef.current.trim()) {
         await invoke("save_caption", { path, caption: captionRef.current.trim(), closeWindow: !pinned });
       }
@@ -323,22 +342,11 @@ export default function Preview() {
           </svg>
         </button>
 
-        {/* Hidden render target for html2canvas */}
-        <div
-          ref={renderRef}
-          className={`share-render tpl-${template}`}
-          style={{
-            position: "absolute",
-            left: "-9999px",
-            top: 0,
-          }}
-        >
-          {renderTemplateContent()}
-        </div>
-
-        {/* Visible preview area */}
+        {/* Preview area - also used for html2canvas capture */}
         <div className="share-preview" ref={previewRef} data-tauri-drag-region>
-          {renderTemplateContent()}
+          <div ref={renderRef} className="share-capture">
+            {renderTemplateContent()}
+          </div>
         </div>
 
         {/* Bottom controls */}
@@ -422,31 +430,23 @@ export default function Preview() {
               <button
                 className="share-btn secondary"
                 onClick={async () => {
-                  if (composing || !renderRef.current || !caption.trim()) return;
+                  if (composing || !caption.trim()) return;
                   setComposing(true);
                   try {
-                    const canvas = await html2canvas(renderRef.current, {
-                      backgroundColor: null,
-                      scale: 2,
-                      useCORS: true,
-                      logging: false,
-                    });
-                    const ctx = canvas.getContext("2d");
-                    if (!ctx) return;
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const rgba = Array.from(imageData.data);
-                    // Generate new filename with timestamp
+                    const result = await captureTemplate();
+                    if (!result) return;
+
                     const dir = path.substring(0, path.lastIndexOf("/"));
                     const ext = path.substring(path.lastIndexOf("."));
                     const baseName = path.substring(path.lastIndexOf("/") + 1, path.lastIndexOf("."));
                     const newPath = `${dir}/${baseName}_${Date.now()}${ext}`;
+
                     await invoke("save_rgba_to_file", {
-                      data: rgba,
-                      width: canvas.width,
-                      height: canvas.height,
+                      data: result.rgba,
+                      width: result.width,
+                      height: result.height,
                       path: newPath,
                     });
-                    // Save caption to original image's Finder comment
                     if (caption.trim()) {
                       await invoke("save_caption", { path, caption: caption.trim(), closeWindow: !pinned });
                     }
