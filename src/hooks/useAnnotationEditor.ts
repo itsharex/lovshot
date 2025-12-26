@@ -12,7 +12,6 @@ import { DEFAULT_STYLES, ANNOTATION_COLORS } from '../types/annotation';
 const MAX_HISTORY = 50;
 
 export function useAnnotationEditor() {
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<AnnotationTool>('select');
   const [activeColor, setActiveColor] = useState(ANNOTATION_COLORS[0].value);
@@ -20,55 +19,50 @@ export function useAnnotationEditor() {
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [fontSize, setFontSize] = useState(16);
 
-  // History for undo/redo
-  const historyRef = useRef<Annotation[][]>([[]]);
-  const historyIndexRef = useRef(0);
+  // History state - both as state for reactivity
+  const [history, setHistory] = useState<Annotation[][]>([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Current annotations derived from history
+  const annotations = history[historyIndex] ?? [];
 
   // Use ref to track selectedId for stable callbacks
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
-  // Stable pushHistory using functional update
-  const pushHistory = useCallback((updater: (prev: Annotation[]) => Annotation[]) => {
-    setAnnotations(prev => {
-      const newAnnotations = updater(prev);
-
-      const history = historyRef.current;
-      const index = historyIndexRef.current;
-
-      // Truncate future history
-      const newHistory = history.slice(0, index + 1);
+  // Push new state to history
+  const pushHistory = useCallback((newAnnotations: Annotation[]) => {
+    setHistory(prev => {
+      // Truncate future history and add new state
+      const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(newAnnotations);
 
       // Limit history size
       if (newHistory.length > MAX_HISTORY) {
         newHistory.shift();
-      } else {
-        historyIndexRef.current = newHistory.length - 1;
       }
-
-      historyRef.current = newHistory;
-      return newAnnotations;
+      return newHistory;
     });
-  }, []);
+    setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY - 1));
+  }, [historyIndex]);
 
-  // Stable callbacks - no dependencies on annotations
+  // Stable callbacks
   const addAnnotation = useCallback((annotation: Annotation) => {
-    pushHistory(prev => [...prev, annotation]);
-  }, [pushHistory]);
+    pushHistory([...annotations, annotation]);
+  }, [pushHistory, annotations]);
 
   const updateAnnotation = useCallback((id: string, updates: Partial<Annotation>) => {
-    pushHistory(prev => prev.map(ann =>
+    pushHistory(annotations.map(ann =>
       ann.id === id ? { ...ann, ...updates } as Annotation : ann
     ));
-  }, [pushHistory]);
+  }, [pushHistory, annotations]);
 
   const deleteAnnotation = useCallback((id: string) => {
-    pushHistory(prev => prev.filter(ann => ann.id !== id));
+    pushHistory(annotations.filter(ann => ann.id !== id));
     if (selectedIdRef.current === id) {
       setSelectedId(null);
     }
-  }, [pushHistory]);
+  }, [pushHistory, annotations]);
 
   const deleteSelected = useCallback(() => {
     if (selectedIdRef.current) {
@@ -77,23 +71,18 @@ export function useAnnotationEditor() {
   }, [deleteAnnotation]);
 
   const undo = useCallback(() => {
-    const index = historyIndexRef.current;
-    if (index > 0) {
-      historyIndexRef.current = index - 1;
-      setAnnotations(historyRef.current[index - 1]);
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
       setSelectedId(null);
     }
-  }, []);
+  }, [historyIndex]);
 
   const redo = useCallback(() => {
-    const history = historyRef.current;
-    const index = historyIndexRef.current;
-    if (index < history.length - 1) {
-      historyIndexRef.current = index + 1;
-      setAnnotations(history[index + 1]);
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(historyIndex + 1);
       setSelectedId(null);
     }
-  }, []);
+  }, [historyIndex, history.length]);
 
   const setRectStyle = useCallback((style: RectStyle) => {
     setActiveStyles((prev) => ({ ...prev, rect: style }));
@@ -108,15 +97,14 @@ export function useAnnotationEditor() {
   }, []);
 
   const reset = useCallback(() => {
-    setAnnotations([]);
     setSelectedId(null);
     setActiveTool('select');
-    historyRef.current = [[]];
-    historyIndexRef.current = 0;
+    setHistory([[]]);
+    setHistoryIndex(0);
   }, []);
 
-  const canUndo = historyIndexRef.current > 0;
-  const canRedo = historyIndexRef.current < historyRef.current.length - 1;
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
 
   return {
     // State
