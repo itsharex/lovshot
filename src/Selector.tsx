@@ -970,7 +970,7 @@ export default function Selector() {
               <div className="toolbar-group">
                 <button
                   className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "rect" ? "active" : ""}`}
-                  onClick={() => isEditing ? editor.setActiveTool("rect") : enterEditMode("rect")}
+                  onClick={() => isEditing ? editor.setActiveTool(editor.activeTool === "rect" ? null : "rect") : enterEditMode("rect")}
                   data-tooltip="矩形标注 (2)"
                 >
                   □
@@ -1007,7 +1007,7 @@ export default function Selector() {
               <div className="toolbar-group">
                 <button
                   className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "mosaic" ? "active" : ""}`}
-                  onClick={() => isEditing ? editor.setActiveTool("mosaic") : enterEditMode("mosaic")}
+                  onClick={() => isEditing ? editor.setActiveTool(editor.activeTool === "mosaic" ? null : "mosaic") : enterEditMode("mosaic")}
                   data-tooltip="马赛克 (3)"
                 >
                   ▦
@@ -1033,7 +1033,7 @@ export default function Selector() {
               <div className="toolbar-group">
                 <button
                   className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "arrow" ? "active" : ""}`}
-                  onClick={() => isEditing ? editor.setActiveTool("arrow") : enterEditMode("arrow")}
+                  onClick={() => isEditing ? editor.setActiveTool(editor.activeTool === "arrow" ? null : "arrow") : enterEditMode("arrow")}
                   data-tooltip="箭头 (4)"
                 >
                   →
@@ -1070,7 +1070,7 @@ export default function Selector() {
               <div className="toolbar-group">
                 <button
                   className={`toolbar-btn has-tooltip ${isEditing && editor.activeTool === "text" ? "active" : ""}`}
-                  onClick={() => isEditing ? editor.setActiveTool("text") : enterEditMode("text")}
+                  onClick={() => isEditing ? editor.setActiveTool(editor.activeTool === "text" ? null : "text") : enterEditMode("text")}
                   data-tooltip="文字 (5)"
                 >
                   T
@@ -1093,61 +1093,53 @@ export default function Selector() {
             </div>
           </div>
 
-          {/* 历史组 (only in editing mode) */}
-          {isEditing && (
-            <>
-              <div className="toolbar-divider" />
-              <div className="toolbar-section">
-                <span className="toolbar-section-title">历史</span>
-                <div className="toolbar-section-content">
-                  <button
-                    className="toolbar-btn has-tooltip"
-                    onClick={editor.undo}
-                    disabled={!editor.canUndo}
-                    style={!editor.canUndo ? { opacity: 0.4 } : undefined}
-                    data-tooltip="撤销 (⌘Z)"
-                  >
-                    ↩
-                  </button>
-                  <button
-                    className="toolbar-btn has-tooltip"
-                    onClick={editor.redo}
-                    disabled={!editor.canRedo}
-                    style={!editor.canRedo ? { opacity: 0.4 } : undefined}
-                    data-tooltip="重做 (⌘⇧Z)"
-                  >
-                    ↪
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {/* 历史组 */}
+          <div className="toolbar-divider" />
+          <div className="toolbar-section">
+            <span className="toolbar-section-title">历史</span>
+            <div className="toolbar-section-content">
+              <button
+                className="toolbar-btn has-tooltip"
+                onClick={editor.undo}
+                disabled={!editor.canUndo}
+                style={!editor.canUndo ? { opacity: 0.4 } : undefined}
+                data-tooltip="撤销 (⌘Z)"
+              >
+                ↩
+              </button>
+              <button
+                className="toolbar-btn has-tooltip"
+                onClick={editor.redo}
+                disabled={!editor.canRedo}
+                style={!editor.canRedo ? { opacity: 0.4 } : undefined}
+                data-tooltip="重做 (⌘⇧Z)"
+              >
+                ↪
+              </button>
+            </div>
+          </div>
 
-          {/* 选项组 (hidden in editing mode) */}
-          {!isEditing && (
-            <>
-              <div className="toolbar-divider" />
-              <div className="toolbar-section">
-                <span className="toolbar-section-title">选项</span>
-                <div className="toolbar-section-content">
-                  <button
-                    className={`toolbar-btn has-tooltip ${excludeTitlebar ? "active" : ""}`}
-                    onClick={() => setExcludeTitlebar(!excludeTitlebar)}
-                    data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
-                  >
-                    T
-                  </button>
-                  <button
-                    className={`toolbar-btn has-tooltip ${captionEnabled ? "active" : ""}`}
-                    onClick={() => setCaptionEnabled(!captionEnabled)}
-                    data-tooltip="添加描述 (C) - 截图后输入说明文字"
-                  >
-                    C
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {/* 选项组 */}
+          <div className="toolbar-divider" />
+          <div className="toolbar-section">
+            <span className="toolbar-section-title">选项</span>
+            <div className="toolbar-section-content">
+              <button
+                className={`toolbar-btn has-tooltip ${excludeTitlebar ? "active" : ""}`}
+                onClick={() => setExcludeTitlebar(!excludeTitlebar)}
+                data-tooltip={`排除标题栏 (T) - ${currentTitlebarHeight}px`}
+              >
+                T
+              </button>
+              <button
+                className={`toolbar-btn has-tooltip ${captionEnabled ? "active" : ""}`}
+                onClick={() => setCaptionEnabled(!captionEnabled)}
+                data-tooltip="添加描述 (C) - 截图后输入说明文字"
+              >
+                C
+              </button>
+            </div>
+          </div>
 
           <div className="toolbar-divider" />
 
