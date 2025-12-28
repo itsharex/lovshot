@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.0
+
+### Minor Changes
+
+- Improve arrow annotation with draggable endpoint handles for precise positioning
+
 ## 0.18.4
 
 ### Patch Changes
