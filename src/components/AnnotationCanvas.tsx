@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Stage, Layer, Image, Rect, Arrow, Text, Line, Transformer, Shape, Group } from 'react-konva';
+import { Stage, Layer, Image, Rect, Arrow, Text, Line, Transformer, Shape, Group, Circle } from 'react-konva';
 import type Konva from 'konva';
 import type {
   Annotation,
@@ -100,6 +100,14 @@ export function AnnotationCanvas({
     if (!transformer || !stage) return;
 
     if (selectedId && activeTool === 'select') {
+      // Skip transformer for arrow type (uses custom endpoint handles)
+      const selectedAnn = annotations.find(a => a.id === selectedId);
+      if (selectedAnn?.type === 'arrow') {
+        transformer.nodes([]);
+        transformer.getLayer()?.batchDraw();
+        return;
+      }
+
       const node = stage.findOne(`#${selectedId}`);
       if (node) {
         transformer.nodes([node]);
@@ -391,10 +399,12 @@ export function AnnotationCanvas({
           key={ann.id}
           annotation={ann}
           backgroundImage={image}
+          canvasWidth={width}
+          canvasHeight={height}
           activeTool={activeTool}
           onClick={() => handleShapeClick(ann.id)}
-          onDragEnd={(x, y) => onUpdateAnnotation(ann.id, { x, y })}
-          onTransformEnd={(w, h) => onUpdateAnnotation(ann.id, { width: w, height: h })}
+          onDragEnd={(nx, ny) => onUpdateAnnotation(ann.id, { x: nx, y: ny })}
+          onTransformEnd={(nx, ny, w, h) => onUpdateAnnotation(ann.id, { x: nx, y: ny, width: w, height: h })}
         />
       );
     }
@@ -403,67 +413,126 @@ export function AnnotationCanvas({
       const pointerLength = ann.style === 'thick' ? 15 : 10;
       const pointerWidth = ann.style === 'thick' ? 12 : 8;
       const sw = ann.style === 'thick' ? ann.strokeWidth * 2 : ann.strokeWidth;
+      const isSelected = selectedId === ann.id && activeTool === 'select';
+      const handleRadius = 6;
+
+      const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+        const dx = e.target.x();
+        const dy = e.target.y();
+        e.target.position({ x: 0, y: 0 });
+        onUpdateAnnotation(ann.id, {
+          points: [
+            ann.points[0] + dx,
+            ann.points[1] + dy,
+            ann.points[2] + dx,
+            ann.points[3] + dy,
+          ],
+        });
+      };
+
+      const handleStartDrag = (e: Konva.KonvaEventObject<DragEvent>) => {
+        e.cancelBubble = true;
+        const newX = e.target.x();
+        const newY = e.target.y();
+        onUpdateAnnotation(ann.id, {
+          points: [newX, newY, ann.points[2], ann.points[3]],
+        });
+      };
+
+      const handleEndDrag = (e: Konva.KonvaEventObject<DragEvent>) => {
+        e.cancelBubble = true;
+        const newX = e.target.x();
+        const newY = e.target.y();
+        onUpdateAnnotation(ann.id, {
+          points: [ann.points[0], ann.points[1], newX, newY],
+        });
+      };
 
       if (ann.style === 'double') {
-        // Double-headed arrow using Line + custom pointers
         return (
-          <Line
-            key={ann.id}
+          <Group key={ann.id}>
+            <Line
+              id={ann.id}
+              points={ann.points}
+              stroke={ann.color}
+              strokeWidth={sw}
+              lineCap="round"
+              lineJoin="round"
+              draggable={activeTool === 'select'}
+              onClick={() => handleShapeClick(ann.id)}
+              onTap={() => handleShapeClick(ann.id)}
+              onDragEnd={handleDragEnd}
+            />
+            {isSelected && (
+              <>
+                <Circle
+                  x={ann.points[0]}
+                  y={ann.points[1]}
+                  radius={handleRadius}
+                  fill="#fff"
+                  stroke="#0066ff"
+                  strokeWidth={2}
+                  draggable
+                  onDragMove={handleStartDrag}
+                />
+                <Circle
+                  x={ann.points[2]}
+                  y={ann.points[3]}
+                  radius={handleRadius}
+                  fill="#fff"
+                  stroke="#0066ff"
+                  strokeWidth={2}
+                  draggable
+                  onDragMove={handleEndDrag}
+                />
+              </>
+            )}
+          </Group>
+        );
+      }
+
+      return (
+        <Group key={ann.id}>
+          <Arrow
             id={ann.id}
             points={ann.points}
             stroke={ann.color}
+            fill={ann.color}
             strokeWidth={sw}
+            pointerLength={pointerLength}
+            pointerWidth={pointerWidth}
             lineCap="round"
             lineJoin="round"
             draggable={activeTool === 'select'}
             onClick={() => handleShapeClick(ann.id)}
             onTap={() => handleShapeClick(ann.id)}
-            onDragEnd={(e) => {
-              const dx = e.target.x();
-              const dy = e.target.y();
-              e.target.position({ x: 0, y: 0 });
-              onUpdateAnnotation(ann.id, {
-                points: [
-                  ann.points[0] + dx,
-                  ann.points[1] + dy,
-                  ann.points[2] + dx,
-                  ann.points[3] + dy,
-                ],
-              });
-            }}
+            onDragEnd={handleDragEnd}
           />
-        );
-      }
-
-      return (
-        <Arrow
-          key={ann.id}
-          id={ann.id}
-          points={ann.points}
-          stroke={ann.color}
-          fill={ann.color}
-          strokeWidth={sw}
-          pointerLength={pointerLength}
-          pointerWidth={pointerWidth}
-          lineCap="round"
-          lineJoin="round"
-          draggable={activeTool === 'select'}
-          onClick={() => handleShapeClick(ann.id)}
-          onTap={() => handleShapeClick(ann.id)}
-          onDragEnd={(e) => {
-            const dx = e.target.x();
-            const dy = e.target.y();
-            e.target.position({ x: 0, y: 0 });
-            onUpdateAnnotation(ann.id, {
-              points: [
-                ann.points[0] + dx,
-                ann.points[1] + dy,
-                ann.points[2] + dx,
-                ann.points[3] + dy,
-              ],
-            });
-          }}
-        />
+          {isSelected && (
+            <>
+              <Circle
+                x={ann.points[0]}
+                y={ann.points[1]}
+                radius={handleRadius}
+                fill="#fff"
+                stroke="#0066ff"
+                strokeWidth={2}
+                draggable
+                onDragMove={handleStartDrag}
+              />
+              <Circle
+                x={ann.points[2]}
+                y={ann.points[3]}
+                radius={handleRadius}
+                fill="#fff"
+                stroke="#0066ff"
+                strokeWidth={2}
+                draggable
+                onDragMove={handleEndDrag}
+              />
+            </>
+          )}
+        </Group>
       );
     }
 
@@ -471,30 +540,42 @@ export function AnnotationCanvas({
       const isEditing = editingTextId === ann.id;
       const hasText = !!ann.text;
       const isHovered = hoveredTextId === ann.id;
-      const isDraggable = hasText && !isEditing;
-
-      // Calculate text dimensions for border
-      const padding = 4;
-      const textNode = stageRef.current?.findOne(`#${ann.id}`) as Konva.Text | undefined;
-      const textWidth = textNode?.width() || 100;
-      const textHeight = textNode?.height() || ann.fontSize;
+      const isSelected = selectedId === ann.id && activeTool === 'select';
+      const isDraggable = hasText && !isEditing && activeTool === 'select';
 
       return (
-        <Group
+        <Text
           key={ann.id}
+          id={ann.id}
           x={ann.x}
           y={ann.y}
+          text={ann.text || (isEditing ? '' : '点击输入')}
+          fontSize={ann.fontSize}
+          fill={ann.color}
           draggable={isDraggable}
           onDragStart={() => { isDraggingRef.current = true; }}
           onDragEnd={(e) => {
             onUpdateAnnotation(ann.id, { x: e.target.x(), y: e.target.y() });
             setTimeout(() => { isDraggingRef.current = false; }, 100);
           }}
+          onTransformEnd={(e) => {
+            const node = e.target as Konva.Text;
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            // Scale fontSize based on vertical scale
+            const newFontSize = Math.max(8, Math.round(ann.fontSize * scaleY));
+            onUpdateAnnotation(ann.id, {
+              x: node.x(),
+              y: node.y(),
+              fontSize: newFontSize,
+            });
+          }}
           onMouseEnter={(e) => {
-            if (isDraggable) {
+            if (isDraggable || isHovered) {
               setHoveredTextId(ann.id);
               const container = e.target.getStage()?.container();
-              if (container) container.style.cursor = 'move';
+              if (container) container.style.cursor = isSelected ? 'move' : 'pointer';
             }
           }}
           onMouseLeave={(e) => {
@@ -502,39 +583,17 @@ export function AnnotationCanvas({
             const container = e.target.getStage()?.container();
             if (container) container.style.cursor = 'default';
           }}
-        >
-          {/* Hover border */}
-          {isHovered && isDraggable && (
-            <Rect
-              x={-padding}
-              y={-padding}
-              width={textWidth + padding * 2}
-              height={textHeight + padding * 2}
-              stroke="#0066ff"
-              strokeWidth={1}
-              dash={[4, 4]}
-              fill="transparent"
-            />
-          )}
-          <Text
-            id={ann.id}
-            x={0}
-            y={0}
-            text={ann.text || (isEditing ? '' : '点击输入')}
-            fontSize={ann.fontSize}
-            fill={ann.color}
-            onClick={() => {
-              handleShapeClick(ann.id);
-              if (activeTool === 'select' && hasText) {
-                setEditingTextId(ann.id);
-              }
-            }}
-            onTap={() => handleShapeClick(ann.id)}
-            onDblClick={() => setEditingTextId(ann.id)}
-            onDblTap={() => setEditingTextId(ann.id)}
-            opacity={hasText ? 1 : 0.5}
-          />
-        </Group>
+          onClick={() => {
+            handleShapeClick(ann.id);
+            if (activeTool === 'select' && hasText) {
+              setEditingTextId(ann.id);
+            }
+          }}
+          onTap={() => handleShapeClick(ann.id)}
+          onDblClick={() => setEditingTextId(ann.id)}
+          onDblTap={() => setEditingTextId(ann.id)}
+          opacity={hasText ? 1 : 0.5}
+        />
       );
     }
 
@@ -652,16 +711,22 @@ export function AnnotationCanvas({
 interface MosaicShapeProps {
   annotation: MosaicAnnotation;
   backgroundImage: HTMLImageElement | null;
+  canvasWidth: number;
+  canvasHeight: number;
   activeTool: AnnotationTool;
   onClick: () => void;
   onDragEnd: (x: number, y: number) => void;
-  onTransformEnd: (width: number, height: number) => void;
+  onTransformEnd: (x: number, y: number, width: number, height: number) => void;
 }
 
-function MosaicShape({ annotation, backgroundImage, activeTool, onClick, onDragEnd, onTransformEnd: _onTransformEnd }: MosaicShapeProps) {
+function MosaicShape({ annotation, backgroundImage, canvasWidth, canvasHeight, activeTool, onClick, onDragEnd, onTransformEnd }: MosaicShapeProps) {
   const { id, x, y, width, height, style, blockSize } = annotation;
 
   if (!backgroundImage || width < 1 || height < 1) return null;
+
+  // Calculate scale ratio for HiDPI screens
+  const scaleX = backgroundImage.width / canvasWidth;
+  const scaleY = backgroundImage.height / canvasHeight;
 
   return (
     <Shape
@@ -674,40 +739,58 @@ function MosaicShape({ annotation, backgroundImage, activeTool, onClick, onDragE
       onClick={onClick}
       onTap={onClick}
       onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+      onTransformEnd={(e) => {
+        const node = e.target;
+        const scX = node.scaleX();
+        const scY = node.scaleY();
+        node.scaleX(1);
+        node.scaleY(1);
+        onTransformEnd(node.x(), node.y(), Math.max(5, node.width() * scX), Math.max(5, node.height() * scY));
+      }}
       sceneFunc={(ctx, shape) => {
         const w = shape.width();
         const h = shape.height();
 
         if (style === 'blur') {
-          // Simple blur effect using multiple semi-transparent draws
-          ctx.save();
-          ctx.filter = 'blur(8px)';
-          ctx.drawImage(
+          // Use offscreen canvas to apply blur filter
+          const offscreen = document.createElement('canvas');
+          offscreen.width = Math.ceil(w);
+          offscreen.height = Math.ceil(h);
+          const offCtx = offscreen.getContext('2d');
+          if (!offCtx) return;
+
+          // Draw the region to offscreen canvas with blur
+          // Use scaled coordinates for HiDPI source image
+          offCtx.filter = 'blur(8px)';
+          offCtx.drawImage(
             backgroundImage,
-            x, y, w, h,
+            x * scaleX, y * scaleY, w * scaleX, h * scaleY,
             0, 0, w, h
           );
-          ctx.restore();
+
+          // Draw the blurred result to Konva canvas
+          ctx.drawImage(offscreen, 0, 0);
         } else {
           // Pixelate effect
           const bs = blockSize;
           const cols = Math.ceil(w / bs);
           const rows = Math.ceil(h / bs);
 
-          // Create offscreen canvas to sample pixels
+          // Create offscreen canvas to sample pixels from scaled source
+          const srcW = Math.ceil(w * scaleX);
+          const srcH = Math.ceil(h * scaleY);
           const offscreen = document.createElement('canvas');
-          offscreen.width = backgroundImage.width;
-          offscreen.height = backgroundImage.height;
+          offscreen.width = srcW;
+          offscreen.height = srcH;
           const offCtx = offscreen.getContext('2d');
           if (!offCtx) return;
-          offCtx.drawImage(backgroundImage, 0, 0);
-
-          const imgData = offCtx.getImageData(
-            Math.floor(x),
-            Math.floor(y),
-            Math.ceil(w),
-            Math.ceil(h)
+          offCtx.drawImage(
+            backgroundImage,
+            x * scaleX, y * scaleY, srcW, srcH,
+            0, 0, srcW, srcH
           );
+
+          const imgData = offCtx.getImageData(0, 0, srcW, srcH);
 
           for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -716,10 +799,10 @@ function MosaicShape({ annotation, backgroundImage, activeTool, onClick, onDragE
               const bw = Math.min(bs, w - px);
               const bh = Math.min(bs, h - py);
 
-              // Sample center pixel
-              const sx = Math.floor(px + bw / 2);
-              const sy = Math.floor(py + bh / 2);
-              const idx = (sy * Math.ceil(w) + sx) * 4;
+              // Sample center pixel (scaled coordinates)
+              const sx = Math.floor((px + bw / 2) * scaleX);
+              const sy = Math.floor((py + bh / 2) * scaleY);
+              const idx = (sy * srcW + sx) * 4;
 
               if (idx >= 0 && idx < imgData.data.length - 3) {
                 const r = imgData.data[idx];
