@@ -199,21 +199,28 @@ export default function Preview() {
   }, [isCaptionMode, imageLoaded, imgSize]);
 
   // 共用的截图函数 - 使用 modern-screenshot 截取 .share-capture
+  // 关键：用 scrollWidth/scrollHeight 获取原始尺寸（不受 transform 影响）
+  // 然后用 style 选项移除克隆 DOM 上的 transform
   const captureTemplate = async (): Promise<{ rgba: number[]; width: number; height: number } | null> => {
     const captureEl = renderRef.current;
     if (!captureEl) return null;
 
-    // 保存并移除 transform/margin，确保截图是原始尺寸
-    const savedTransform = captureEl.style.transform;
-    const savedMargin = captureEl.style.marginBottom;
-    captureEl.style.transform = '';
-    captureEl.style.marginBottom = '';
-    void captureEl.offsetHeight;
+    // scrollWidth/scrollHeight 返回原始尺寸，不受 CSS transform 影响
+    const originalWidth = captureEl.scrollWidth;
+    const originalHeight = captureEl.scrollHeight;
 
     try {
       const canvas = await domToCanvas(captureEl, {
         scale: 2,
         backgroundColor: null,
+        // 显式指定原始尺寸，避免 getBoundingClientRect 返回缩放后的尺寸
+        width: originalWidth,
+        height: originalHeight,
+        // style 应用于克隆后的根元素，移除 transform
+        style: {
+          transform: 'none',
+          marginBottom: '0',
+        },
       });
 
       const ctx = canvas.getContext("2d");
@@ -224,9 +231,6 @@ export default function Preview() {
     } catch (err) {
       console.error("[captureTemplate] modern-screenshot error:", err);
       return null;
-    } finally {
-      captureEl.style.transform = savedTransform;
-      captureEl.style.marginBottom = savedMargin;
     }
   };
 
